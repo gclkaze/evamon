@@ -1,68 +1,67 @@
 package job
 
 import (
-	"fmt"
-	"os"
-
 	validate "github.com/gclkaze/evamon/cmd/internal"
+	"github.com/gclkaze/evamon/cmd/internal/app"
+	"github.com/gclkaze/evamon/cmd/internal/models"
 	"github.com/spf13/cobra"
 )
 
-func NewJobAddCmd() *cobra.Command {
+func NewJobAddCmd(application *app.Evamon) *cobra.Command {
 	var widgetPath string
+	var argsCSV string
+	var tagsCSV string
+	var description string
+	var allowOverlap bool
 
 	var jobAddCmd = &cobra.Command{
 		Use:   "add <interval-string> <eva-script-path>",
 		Short: "Add a new job",
 		Args:  cobra.ExactArgs(2),
-		Run: func(cmd *cobra.Command, args []string) {
-			intervalString := args[0]
-			evaScriptPath := args[1]
+		Run: func(cmd *cobra.Command, argv []string) {
+			schedule := argv[0]
+			scriptPath := argv[1]
 
-			// Validations
-			if err := validate.IntervalString(intervalString); err != nil {
-				fmt.Fprintln(os.Stderr, "Error:", err)
+			argsList := validate.ParseCSV(argsCSV)
+			tagsList := validate.ParseCSV(tagsCSV)
+
+			// Construct (preprocess happens inside)
+			req := models.NewJobAddRequest(schedule, scriptPath, argsList, description, tagsList, allowOverlap)
+
+			// Validate (all rules inside)
+			if err := req.IsValid(); err != nil {
+				application.GetPrinter().Error(err)
 				return
 			}
 
-			// If your eva script must be a file (not a directory), use RequireFileExists
-			if err := validate.RequireFileExists(evaScriptPath); err != nil {
-				fmt.Fprintln(os.Stderr, "Error:", err)
-				return
-			}
-
+			// widgetPath is NOT part of request: validate separately
 			if widgetPath != "" {
 				if err := validate.RequireFileExists(widgetPath); err != nil {
-					fmt.Fprintln(os.Stderr, "Error:", err)
+					application.GetPrinter().Error(err)
 					return
 				}
-			}
-
-			// Optional: normalize to absolute paths
-			absEva, err := validate.RequireAbsPath(evaScriptPath)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "Error:", err)
-				return
-			}
-			evaScriptPath = absEva
-
-			if widgetPath != "" {
 				absWidget, err := validate.RequireAbsPath(widgetPath)
 				if err != nil {
-					fmt.Fprintln(os.Stderr, "Error:", err)
+					application.GetPrinter().Error(err)
 					return
 				}
 				widgetPath = absWidget
 			}
 
-			// TODO: send over websocket
-			fmt.Printf("Adding job:\n  interval-string: %s\n  eva-script-path: %s\n", intervalString, evaScriptPath)
-			if widgetPath != "" {
-				fmt.Printf("  widget-path: %s\n", widgetPath)
+			if err := application.AddJob(req, widgetPath); err != nil {
+				application.GetPrinter().Error(err)
+				return
 			}
+
+			application.GetPrinter().Info("Job added successfully")
 		},
 	}
 
 	jobAddCmd.Flags().StringVar(&widgetPath, "widget-path", "", "Optional widget path")
+	jobAddCmd.Flags().StringVar(&argsCSV, "args", "", "Optional args list (comma-separated)")
+	jobAddCmd.Flags().StringVar(&tagsCSV, "tags", "", "Optional tags list (comma-separated)")
+	jobAddCmd.Flags().StringVar(&description, "description", "", "Optional description")
+	jobAddCmd.Flags().BoolVar(&allowOverlap, "allow-overlap", false, "Allow overlapping runs (default false)")
+
 	return jobAddCmd
 }

@@ -1,11 +1,19 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
+	"github.com/gclkaze/evamon/cmd/internal/app"
+	"github.com/gclkaze/evamon/cmd/internal/services"
 	"github.com/gclkaze/evamon/cmd/job"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+)
+
+var (
+	verbose  bool
+	hostname string
+	port     int
 )
 
 func NewRootCmd() *cobra.Command {
@@ -14,17 +22,55 @@ func NewRootCmd() *cobra.Command {
 		Short: "evamon is a CLI for managing Evacron jobs",
 	}
 
-	// Add child commands
-	rootCmd.AddCommand(job.NewJobCmd())
+	rootCmd.PersistentFlags().BoolVarP(
+		&verbose,
+		"verbose",
+		"v",
+		false,
+		"Enable verbose output",
+	)
+
+	rootCmd.PersistentFlags().StringVar(
+		&hostname,
+		"hostname",
+		"",
+		"Evacron server hostname",
+	)
+
+	rootCmd.PersistentFlags().IntVar(
+		&port,
+		"port",
+		0,
+		"Evacron server port",
+	)
+
+	_ = viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
+	_ = viper.BindPFlag("server.hostname", rootCmd.PersistentFlags().Lookup("hostname"))
+	_ = viper.BindPFlag("server.port", rootCmd.PersistentFlags().Lookup("port"))
+
+	jobService := services.NewJobService()
+	app := app.NewEvamon("evamon", verbose, jobService)
+	err := app.Init()
+	if err != nil {
+		app.GetPrinter().Error(err)
+		return nil
+	}
+	jobService.SetSetup(app)
+
+	rootCmd.AddCommand(job.NewJobCmd(app))
 
 	return rootCmd
 }
 
 func Execute() {
-	if err := NewRootCmd().Execute(); err != nil {
+	root := NewRootCmd()
+	if root == nil {
+		os.Exit(1)
+	}
+	if err := root.Execute(); err != nil {
 		// Cobra-level parsing errors still come here (unknown command, bad args, etc).
 		// You said you'll handle errors yourself — this is only for Cobra execution errors.
-		fmt.Fprintln(os.Stderr, err)
+		//fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }

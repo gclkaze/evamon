@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // FileExists returns nil if path exists (file or directory), otherwise an error.
@@ -85,4 +86,87 @@ func IsValidId(id string) error {
 // You can later replace this with a cron parser validation.
 func IntervalString(interval string) error {
 	return NonEmpty("interval-string", interval)
+}
+
+const (
+	MaxArgsCount = 20
+	MaxTagsCount = 20
+	MaxArgLen    = 256
+	MaxTagLen    = 64
+	MaxDescLen   = 200
+)
+
+// ParseCSV splits a comma-separated string into a trimmed slice.
+// It drops empty entries (",,").
+// If input is empty/whitespace => returns nil, nil.
+
+func ParseCSV(input string) []string {
+	s := strings.TrimSpace(input)
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		out = append(out, p)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func ValidateArgs(args []string) error {
+	if len(args) == 0 {
+		return nil
+	}
+	if len(args) > MaxArgsCount {
+		return fmt.Errorf("args has too many items (max %d)", MaxArgsCount)
+	}
+	for i, a := range args {
+		a = strings.TrimSpace(a)
+		if a == "" {
+			return fmt.Errorf("args[%d] is empty", i)
+		}
+		if utf8.RuneCountInString(a) > MaxArgLen {
+			return fmt.Errorf("args[%d] too long (max %d chars)", i, MaxArgLen)
+		}
+	}
+	return nil
+}
+
+func ValidateTags(tags []string) error {
+	if len(tags) == 0 {
+		return nil
+	}
+	if len(tags) > MaxTagsCount {
+		return fmt.Errorf("tags has too many items (max %d)", MaxTagsCount)
+	}
+	for i, t := range tags {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			return fmt.Errorf("tags[%d] is empty", i)
+		}
+		if utf8.RuneCountInString(t) > MaxTagLen {
+			return fmt.Errorf("tags[%d] too long (max %d chars)", i, MaxTagLen)
+		}
+		// Optional: enforce no spaces inside a tag (common convention)
+		// if strings.ContainsAny(t, " \t") { return fmt.Errorf("tags[%d] contains whitespace", i) }
+	}
+	return nil
+}
+
+func ValidateDescription(desc string) error {
+	desc = strings.TrimSpace(desc)
+	if desc == "" {
+		return nil // description is optional
+	}
+	if utf8.RuneCountInString(desc) > MaxDescLen {
+		return fmt.Errorf("description too long (max %d chars)", MaxDescLen)
+	}
+	return nil
 }
