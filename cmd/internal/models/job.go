@@ -20,7 +20,7 @@ const (
 
 type JobAddRequest struct {
 	Schedule     string   `json:"schedule"`
-	Script       string   `json:"script"`
+	ScriptPath   string   `json:"scriptPath"`
 	Args         []string `json:"args,omitempty"`
 	Description  string   `json:"description,omitempty"`
 	Tags         []string `json:"tags,omitempty"`
@@ -66,7 +66,7 @@ func NewJobAddRequest(schedule string, script string, args []string, description
 
 	return &JobAddRequest{
 		Schedule:     schedule,
-		Script:       script,
+		ScriptPath:   script,
 		Args:         args,
 		Description:  description,
 		Tags:         tags,
@@ -87,20 +87,20 @@ func (r *JobAddRequest) IsValid() error {
 	if r.Schedule == "" {
 		return fmt.Errorf("schedule is empty")
 	}
-	if r.Script == "" {
+	if r.ScriptPath == "" {
 		return fmt.Errorf("script is empty")
 	}
 
 	// Script must exist and be a file
-	info, err := os.Stat(r.Script)
+	info, err := os.Stat(r.ScriptPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("script does not exist: %s", r.Script)
+			return fmt.Errorf("script does not exist: %s", r.ScriptPath)
 		}
-		return fmt.Errorf("cannot access script %q: %w", r.Script, err)
+		return fmt.Errorf("cannot access script %q: %w", r.ScriptPath, err)
 	}
 	if info.IsDir() {
-		return fmt.Errorf("script must be a file, got directory: %s", r.Script)
+		return fmt.Errorf("script must be a file, got directory: %s", r.ScriptPath)
 	}
 
 	// Description optional
