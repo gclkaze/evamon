@@ -5,7 +5,10 @@ import (
 
 	"github.com/gclkaze/evamon/cmd/internal/app"
 	"github.com/gclkaze/evamon/cmd/internal/services"
+	fynediagrams "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/fyne"
+	ui "github.com/gclkaze/evamon/cmd/internal/ui/factory"
 	"github.com/gclkaze/evamon/cmd/job"
+	"github.com/gclkaze/evamon/cmd/view"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -49,15 +52,41 @@ func NewRootCmd() *cobra.Command {
 	_ = viper.BindPFlag("server.port", rootCmd.PersistentFlags().Lookup("port"))
 
 	jobService := services.NewJobService()
-	app := app.NewEvamon("evamon", verbose, jobService)
-	err := app.Init()
+
+	r, err := ui.NewRenderer(ui.KindFyne)
+	if err != nil {
+		os.Exit(1)
+	}
+	df := fynediagrams.NewFactory()
+	//ws := widgets.NewWidgetService(r, df)
+	//_ = ws.CreateWindow(vp)
+
+	//r.Run()
+
+	widgetService := services.NewWidgetService(r, df)
+	viewService := services.NewViewService(widgetService)
+
+	app := app.NewEvamon("evamon", verbose, jobService, viewService)
+	err = app.Init()
 	if err != nil {
 		app.GetPrinter().Error(err)
 		return nil
 	}
 	jobService.SetSetup(app)
+	viewService.SetSetup(app)
+
+	registryService, err := services.NewProjectsRegistry(app)
+	if err != nil {
+		app.GetPrinter().Error(err)
+		return nil
+	}
+
+	app.SetProjectRegistryService(registryService)
+
+	viewService.SetProjectRegistryService(registryService)
 
 	rootCmd.AddCommand(job.NewJobCmd(app))
+	rootCmd.AddCommand(view.NewViewCmd(app))
 
 	return rootCmd
 }

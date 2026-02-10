@@ -10,6 +10,8 @@ import (
 	"github.com/gclkaze/evamon/cmd/internal/models"
 	"github.com/gclkaze/evamon/cmd/internal/output"
 	"github.com/gclkaze/evamon/cmd/internal/services"
+	"github.com/gclkaze/evamon/cmd/internal/userinput"
+	"github.com/gclkaze/evamon/cmd/internal/viewproject"
 	"github.com/gclkaze/evamon/cmd/internal/wsclient"
 	"github.com/gclkaze/evamon/pkg/utils"
 	"github.com/magiconair/properties"
@@ -23,20 +25,25 @@ type Evamon struct {
 	propsPath      string
 	widgetFilePath string
 
-	jobService *services.JobService
-	resolver   *config.EndpointResolver
-	ep         *config.Endpoint
-	client     *wsclient.Client
-	token      string
+	jobService      *services.JobService
+	resolver        *config.EndpointResolver
+	ep              *config.Endpoint
+	client          *wsclient.Client
+	token           string
+	viewService     *services.ViewService
+	registryService *services.ProjectsRegistryService
 }
 
-func NewEvamon(appName string, verbose bool, jobService *services.JobService) *Evamon {
-
-	return &Evamon{appName: appName, logger: output.NewConsolePrinter(verbose), jobService: jobService}
+func NewEvamon(appName string, verbose bool, jobService *services.JobService, viewService *services.ViewService) *Evamon {
+	return &Evamon{appName: appName, logger: output.NewConsolePrinter(verbose), jobService: jobService, viewService: viewService}
 }
 
 func (inst Evamon) GetEndpointResolver() *config.EndpointResolver {
 	return inst.resolver
+}
+
+func (inst *Evamon) SetProjectRegistryService(registryService *services.ProjectsRegistryService) {
+	inst.registryService = registryService
 }
 
 func (inst Evamon) GetToken() string {
@@ -44,6 +51,10 @@ func (inst Evamon) GetToken() string {
 }
 func (inst Evamon) GetProperties() *properties.Properties {
 	return inst.properties
+}
+
+func (inst Evamon) GetWidgetPath() string {
+	return inst.paths.Lib
 }
 
 func (inst Evamon) GetPrinter() output.Printer {
@@ -155,4 +166,58 @@ func (inst *Evamon) setupFolders() error {
 
 func (inst *Evamon) AddJob(job *models.JobAddRequest, widgetPath string) error {
 	return inst.jobService.AddJob(job, widgetPath)
+}
+
+func (inst *Evamon) ViewAttach(p *userinput.ViewAttachParams) error {
+	return inst.viewService.ViewAttach(p)
+}
+
+func (inst *Evamon) GetRegistryService() *services.ProjectsRegistryService {
+	return inst.registryService
+}
+func (inst *Evamon) PrintProjectRegistry(params *userinput.ViewLsParams) error {
+	if params == nil {
+		return fmt.Errorf("nil params")
+	}
+	if inst.registryService == nil {
+		return fmt.Errorf("project registry is not initialized")
+	}
+	if inst.logger == nil {
+		return fmt.Errorf("logger is not initialized")
+	}
+
+	if err := params.IsValid(); err != nil {
+		return err
+	}
+
+	return inst.registryService.Print(params, inst.logger)
+}
+func (inst *Evamon) RenderViewProject(params *userinput.ViewRenderParams) error {
+	if params == nil {
+		return fmt.Errorf("nil params")
+	}
+	if inst.registryService == nil {
+		return fmt.Errorf("project registry is not initialized")
+	}
+	if err := params.IsValid(); err != nil {
+		return err
+	}
+
+	// Resolve project path
+	path, ok, err := inst.registryService.Get(params.ProjectID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("project not found: %s", params.ProjectID)
+	}
+
+	// Load project
+	vp, err := viewproject.LoadViewProject(path)
+	if err != nil {
+		return err
+	}
+
+	// Delegate to renderer with headless mode
+	return inst.viewService.Render(vp, params.Headless)
 }

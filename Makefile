@@ -1,4 +1,4 @@
-APP_NAME  := evamon
+APP_NAME  := evamon.exe
 MAIN_FILE := ./main.go
 BUILD_DIR := ./build
 OUT       := $(BUILD_DIR)/$(APP_NAME)
@@ -8,7 +8,7 @@ OUT       := $(BUILD_DIR)/$(APP_NAME)
 all: build
 
 build:
-	mkdir -p $(BUILD_DIR)
+#	mkdir -p $(BUILD_DIR)
 	go build -o $(OUT) $(MAIN_FILE)
 
 test:

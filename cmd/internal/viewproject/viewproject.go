@@ -1,4 +1,4 @@
-package config
+package viewproject
 
 import (
 	"bytes"
@@ -10,30 +10,42 @@ import (
 	"strings"
 )
 
-// --------------------
-// Public model
-// --------------------
+// ============================================================
+// Models: ViewWindow (view-only) + ViewProject (jobID + view)
+// ============================================================
 
-type Config struct {
-	// Absolute path of the config file (filled by loader)
-	ConfigPath string `json:"-"`
-
-	// Script path as given in JSON (raw), and the resolved absolute path.
-	Script    string `json:"script"`
-	ScriptAbs string `json:"-"`
-
-	View View `json:"view"`
-}
-
-type View struct {
+// ViewWindow is the reusable view-only document (no jobID).
+// It corresponds to JSON like:
+//
+//	{
+//	  "multiTab": false,
+//	  "diagrams": [ ... ]
+//	}
+type ViewWindow struct {
 	MultiTab    bool         `json:"multiTab"`
 	WindowStyle *WindowStyle `json:"windowStyle,omitempty"`
 	Diagrams    []Diagram    `json:"diagrams"`
 }
 
+// ViewProject wraps a ViewWindow and targets a JobID.
+// It corresponds to JSON like:
+//
+//	{
+//	  "jobID": "this-is-an-id",
+//	  "view": { ...ViewWindow... }
+//	}
+type ViewProject struct {
+	ID string `json:"ID"`
+	// Absolute path of the project file (filled by loader)
+	ProjectPath string `json:"-"`
+
+	JobID string     `json:"jobID"`
+	View  ViewWindow `json:"view"`
+}
+
 type WindowStyle struct {
-	Width  *int `json:"width,omitempty"`
-	Height *int `json:"height,omitempty"`
+	Width  *float32 `json:"width,omitempty"`
+	Height *float32 `json:"height,omitempty"`
 }
 
 // Diagram contains a typed union for setup items based on Diagram.Type.
@@ -57,8 +69,8 @@ type SetupItem struct {
 	WindowStyle  *WindowStyle `json:"windowStyle,omitempty"`
 
 	// Typed union:
-	// - for boolean diagrams: *BooleanStyle
-	// - for bar diagrams:     *BarStyle
+	// - for boolean diagrams: BooleanStyle
+	// - for bar diagrams:     BarStyle
 	DiagramStyle Style `json:"diagramStyle,omitempty"`
 }
 
@@ -77,7 +89,7 @@ type Style interface {
 	isStyle()
 }
 
-// BooleanStyle matches your example keys "true"/"false".
+// BooleanStyle matches JSON keys "true"/"false".
 type BooleanStyle struct {
 	True  string `json:"true"`
 	False string `json:"false"`
@@ -85,7 +97,7 @@ type BooleanStyle struct {
 
 func (BooleanStyle) isStyle() {}
 
-// BarStyle matches your example keys "axis"/"background".
+// BarStyle matches JSON keys "axis"/"background".
 type BarStyle struct {
 	Axis       string `json:"axis,omitempty"`
 	Background string `json:"background,omitempty"`
@@ -93,16 +105,16 @@ type BarStyle struct {
 
 func (BarStyle) isStyle() {}
 
-// --------------------
-// Loader
-// --------------------
+// ============================================================
+// Loaders
+// ============================================================
 
-// Load reads a JSON config file from disk, parses it, resolves ScriptAbs,
+// LoadViewWindow reads a JSON ViewWindow file from disk, parses it strictly,
 // and validates the result.
-func Load(path string) (*Config, error) {
+func LoadViewWindow(path string) (*ViewWindow, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return nil, fmt.Errorf("config path is empty")
+		return nil, fmt.Errorf("view path is empty")
 	}
 
 	expanded, err := expandUser(path)
@@ -110,61 +122,73 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
-	absCfgPath, err := filepath.Abs(expanded)
+	absPath, err := filepath.Abs(expanded)
 	if err != nil {
 		return nil, fmt.Errorf("abs(%q): %w", expanded, err)
 	}
 
-	data, err := os.ReadFile(absCfgPath)
+	data, err := os.ReadFile(absPath)
 	if err != nil {
-		return nil, fmt.Errorf("read %q: %w", absCfgPath, err)
+		return nil, fmt.Errorf("read %q: %w", absPath, err)
 	}
 
-	var cfg Config
-	if err := decodeStrict(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parse %q: %w", absCfgPath, err)
+	var vw ViewWindow
+	if err := decodeStrict(data, &vw); err != nil {
+		return nil, fmt.Errorf("parse %q: %w", absPath, err)
 	}
 
-	cfg.ConfigPath = absCfgPath
-
-	// Resolve script relative to config location (if not absolute).
-	if strings.TrimSpace(cfg.Script) == "" {
-		return nil, fmt.Errorf("invalid config %q: script is required", absCfgPath)
+	if err := vw.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid view %q: %w", absPath, err)
 	}
 
-	scriptExpanded, err := expandUser(cfg.Script)
-	if err != nil {
-		return nil, fmt.Errorf("invalid config %q: %w", absCfgPath, err)
-	}
-
-	cfgDir := filepath.Dir(absCfgPath)
-	if filepath.IsAbs(scriptExpanded) {
-		cfg.ScriptAbs = scriptExpanded
-	} else {
-		cfg.ScriptAbs = filepath.Join(cfgDir, scriptExpanded)
-	}
-
-	// Normalize script abs path (clean + abs)
-	cfg.ScriptAbs, err = filepath.Abs(cfg.ScriptAbs)
-	if err != nil {
-		return nil, fmt.Errorf("invalid config %q: abs(script): %w", absCfgPath, err)
-	}
-
-	// Validate everything
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid config %q: %w", absCfgPath, err)
-	}
-
-	return &cfg, nil
+	return &vw, nil
 }
+
+// LoadViewProject reads a JSON ViewProject file from disk, parses it strictly,
+// and validates the result. It also fills vp.ProjectPath.
+func LoadViewProject(path string) (*ViewProject, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, fmt.Errorf("project path is empty")
+	}
+
+	expanded, err := expandUser(path)
+	if err != nil {
+		return nil, err
+	}
+
+	absPath, err := filepath.Abs(expanded)
+	if err != nil {
+		return nil, fmt.Errorf("abs(%q): %w", expanded, err)
+	}
+
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, fmt.Errorf("read %q: %w", absPath, err)
+	}
+
+	var vp ViewProject
+	if err := decodeStrict(data, &vp); err != nil {
+		return nil, fmt.Errorf("parse %q: %w", absPath, err)
+	}
+
+	vp.ProjectPath = absPath
+
+	if err := vp.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid project %q: %w", absPath, err)
+	}
+
+	return &vp, nil
+}
+
+// ============================================================
+// Strict JSON helpers
+// ============================================================
 
 // decodeStrict decodes JSON and fails on unknown fields.
 func decodeStrict(data []byte, v any) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
-
-	// Optional: prevent numbers silently turning into float64 in interface{} cases.
-	// (We don't rely on interface{} here, but it doesn't hurt.)
 	dec.UseNumber()
 
 	if err := dec.Decode(v); err != nil {
@@ -194,9 +218,9 @@ func expandUser(p string) (string, error) {
 	return p, nil
 }
 
-// --------------------
+// ============================================================
 // Custom unmarshalling for typed diagramStyle union
-// --------------------
+// ============================================================
 
 func (d *Diagram) UnmarshalJSON(b []byte) error {
 	// Step 1: decode diagram envelope (type + setup raw)
@@ -271,58 +295,55 @@ func parseStyleForDiagramType(t DiagramType, raw json.RawMessage) (Style, error)
 	}
 }
 
-// --------------------
+// ============================================================
 // Validation
-// --------------------
+// ============================================================
 
-func (c Config) Validate() error {
-	if strings.TrimSpace(c.Script) == "" {
-		return fmt.Errorf("script is required")
+// Validate validates the view-only document.
+func (vw ViewWindow) Validate() error {
+	if len(vw.Diagrams) == 0 {
+		return fmt.Errorf("diagrams must not be empty")
 	}
-	if strings.TrimSpace(c.ScriptAbs) == "" {
-		return fmt.Errorf("scriptAbs is empty (loader bug)")
-	}
-
-	// Validate script exists
-	if st, err := os.Stat(c.ScriptAbs); err != nil {
-		return fmt.Errorf("script not found: %q (%v)", c.ScriptAbs, err)
-	} else if st.IsDir() {
-		return fmt.Errorf("script path is a directory: %q", c.ScriptAbs)
-	}
-
-	// Validate view
-	if len(c.View.Diagrams) == 0 {
-		return fmt.Errorf("view.diagrams must not be empty")
-	}
-	if err := validateWindowStyle("view.windowStyle", c.View.WindowStyle); err != nil {
+	if err := validateWindowStyle("windowStyle", vw.WindowStyle); err != nil {
 		return err
 	}
 
-	for i := range c.View.Diagrams {
-		if err := c.View.Diagrams[i].Validate(i); err != nil {
-			return err
+	for i := range vw.Diagrams {
+		if err := vw.Diagrams[i].Validate(i); err != nil {
+			return fmt.Errorf("diagrams[%d]: %w", i, err)
 		}
+	}
+	return nil
+}
+
+// Validate validates the project wrapper (jobID + view).
+func (vp ViewProject) Validate() error {
+	if strings.TrimSpace(vp.JobID) == "" {
+		return fmt.Errorf("jobID is required")
+	}
+	if err := vp.View.Validate(); err != nil {
+		return fmt.Errorf("view: %w", err)
 	}
 	return nil
 }
 
 func (d Diagram) Validate(diagramIndex int) error {
 	if d.Type == "" {
-		return fmt.Errorf("view.diagrams[%d].type is required", diagramIndex)
+		return fmt.Errorf("type is required")
 	}
 	switch d.Type {
 	case DiagramTypeBoolean, DiagramTypeBar:
 		// ok
 	default:
-		return fmt.Errorf("view.diagrams[%d].type unsupported: %q", diagramIndex, d.Type)
+		return fmt.Errorf("type unsupported: %q", d.Type)
 	}
 
 	if len(d.Setup) == 0 {
-		return fmt.Errorf("view.diagrams[%d].setup must not be empty", diagramIndex)
+		return fmt.Errorf("setup must not be empty")
 	}
 
 	for j, s := range d.Setup {
-		prefix := fmt.Sprintf("view.diagrams[%d].setup[%d]", diagramIndex, j)
+		prefix := fmt.Sprintf("setup[%d]", j)
 
 		if strings.TrimSpace(s.Variable) == "" {
 			return fmt.Errorf("%s.variable is required", prefix)
@@ -334,12 +355,10 @@ func (d Diagram) Validate(diagramIndex int) error {
 			return fmt.Errorf("%s.variableType is required", prefix)
 		}
 
-		// windowStyle ints must be positive if set
 		if err := validateWindowStyle(prefix+".windowStyle", s.WindowStyle); err != nil {
 			return err
 		}
 
-		// Typed style validation by diagram type
 		if s.DiagramStyle != nil {
 			switch d.Type {
 			case DiagramTypeBoolean:
@@ -350,17 +369,14 @@ func (d Diagram) Validate(diagramIndex int) error {
 				if strings.TrimSpace(style.True) == "" || strings.TrimSpace(style.False) == "" {
 					return fmt.Errorf("%s.diagramStyle requires non-empty keys \"true\" and \"false\"", prefix)
 				}
-				// Optional: enforce variableType is boolean
 				if s.VariableType != ValueTypeBoolean {
 					return fmt.Errorf("%s.variableType must be %q for boolean diagram", prefix, ValueTypeBoolean)
 				}
 
 			case DiagramTypeBar:
-				_, ok := s.DiagramStyle.(BarStyle)
-				if !ok {
+				if _, ok := s.DiagramStyle.(BarStyle); !ok {
 					return fmt.Errorf("%s.diagramStyle must be bar style", prefix)
 				}
-				// Optional: enforce integer for bars
 				if s.VariableType != ValueTypeInteger {
 					return fmt.Errorf("%s.variableType must be %q for bar diagram", prefix, ValueTypeInteger)
 				}

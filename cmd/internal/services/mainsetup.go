@@ -13,4 +13,5 @@ type MainSetup interface {
 	GetProperties() *properties.Properties
 	GetPrinter() output.Printer
 	GetWSClient() *wsclient.Client
+	GetWidgetPath() string
 }

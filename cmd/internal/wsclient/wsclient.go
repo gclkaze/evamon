@@ -126,3 +126,32 @@ func (c *Client) ReadJSON(ctx context.Context, out any) error {
 	}
 	return nil
 }
+func (c *Client) ReadJSONForever(ctx context.Context, out any) error {
+	if c.conn == nil {
+		err := ErrNotConnected()
+		if c.logger != nil {
+			c.logger.Error(err)
+		}
+		return err
+	}
+
+	_, b, err := c.conn.Read(ctx) // no timeout
+	if err != nil {
+		if c.logger != nil {
+			c.logger.Error(err)
+		}
+		return err
+	}
+
+	if c.logger != nil {
+		c.logger.VerboseInfo("[ws] <- " + string(b))
+	}
+
+	if err := json.Unmarshal(b, out); err != nil {
+		if c.logger != nil {
+			c.logger.Error(err)
+		}
+		return err
+	}
+	return nil
+}
