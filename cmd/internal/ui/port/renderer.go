@@ -4,4 +4,5 @@ package port
 // Your app/service asks for windows through this interface.
 type Renderer interface {
 	NewExecutionWindow(title string) (ExecutionWindow, error)
+	Run()
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/gclkaze/evamon/cmd/internal/fs"
 	"github.com/gclkaze/evamon/cmd/internal/models"
@@ -20,6 +21,7 @@ type ViewService struct {
 	setup           MainSetup
 	registryService *ProjectsRegistryService
 	wservice        *WidgetService
+	windowHolders   sync.Map
 }
 
 func NewViewService(wService *WidgetService) *ViewService {
@@ -142,8 +144,10 @@ func (inst *ViewService) Render(vp *viewproject.ViewProject, headless bool) erro
 		return fmt.Errorf("listen failed: %s", ack.Error)
 	}
 
-	inst.wservice.CreateWindow(vp)
-
+	err := inst.wservice.CreateProjectUI(vp, inst.setup.GetProperties())
+	if err != nil {
+		return err
+	}
 	//	rend, err := ui.NewRenderer(ui.KindFyne)
 
 	for {

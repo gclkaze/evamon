@@ -19,3 +19,7 @@ func (r *Renderer) NewExecutionWindow(title string) (port.ExecutionWindow, error
 	w := r.a.NewWindow(title)
 	return &FyneWindow{w: w}, nil
 }
+
+func (r *Renderer) Run() {
+	r.a.Run()
+}

@@ -1,17 +1,26 @@
 // ui/fyne/window.go
 package fynerenderer
 
-import "fyne.io/fyne/v2"
+import (
+	"sync"
 
-/*type ExecutionWindow interface {
-	SetTitle(string)
-	SetContent(fyne.CanvasObject)
-	Show()
-	Close()
-}*/
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/widget"
+)
 
 type FyneWindow struct {
 	w fyne.Window
+
+	tabs *container.AppTabs
+
+	mu     sync.Mutex
+	tabMap map[string]*FyneTab // <-- key part
+}
+
+type FyneTab struct {
+	item *container.TabItem
+	log  *widget.Entry
 }
 
 func (fw *FyneWindow) SetTitle(t string)              { fw.w.SetTitle(t) }
@@ -41,4 +50,64 @@ func (fw *FyneWindow) RunOnUI(fn func()) {
 	} else {
 		fn()
 	}
+}
+
+func (fw *FyneWindow) UpsertTab(tabID, title string) {
+	fw.mu.Lock()
+	defer fw.mu.Unlock()
+
+	if tab, ok := fw.tabMap[tabID]; ok {
+		tab.item.Text = title
+		fw.tabs.Refresh()
+		return
+	}
+
+	// create new tab
+	log := widget.NewMultiLineEntry()
+	log.Disable()
+
+	item := container.NewTabItem(title, log)
+	fw.tabs.Append(item)
+
+	fw.tabMap[tabID] = &FyneTab{
+		item: item,
+		log:  log,
+	}
+}
+func (fw *FyneWindow) RemoveTab(tabID string) {
+	fyne.Do(func() {
+
+		fw.mu.Lock()
+		tab, ok := fw.tabMap[tabID]
+		if ok {
+			delete(fw.tabMap, tabID)
+		}
+		fw.mu.Unlock()
+
+		if !ok {
+			return // nothing to remove
+		}
+
+		// Remove from AppTabs
+		fw.tabs.Remove(tab.item)
+
+		// Optional: ensure a tab is selected if any remain
+		if len(fw.tabs.Items) > 0 && fw.tabs.Selected() == nil {
+			fw.tabs.Select(fw.tabs.Items[0])
+		}
+	})
+}
+
+func (fw *FyneWindow) AppendLog(tabID, line string) {
+	fyne.Do(func() {
+
+		fw.mu.Lock()
+		tab, ok := fw.tabMap[tabID]
+		fw.mu.Unlock()
+		if !ok {
+			return
+		}
+
+		tab.log.SetText(tab.log.Text + "\n" + line)
+	})
 }

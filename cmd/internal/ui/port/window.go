@@ -12,4 +12,10 @@ type ExecutionWindow interface {
 	// capabilities you need in WidgetService:
 	SetResizable(resizable bool)  // true = user can resize
 	Resize(width, height float32) // initial size
+
+	UpsertTab(tabID, title string)
+	RemoveTab(tabID string)
+
+	AppendLog(tabID, line string)
+	//UpsertSeries(tabID, series string, points []Point)
 }
