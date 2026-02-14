@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
+	"github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 )
 
 type FyneWindow struct {
@@ -18,15 +19,30 @@ type FyneWindow struct {
 	tabMap map[string]*FyneTab // <-- key part
 }
 
+func NewFyneWindow(w fyne.Window) *FyneWindow {
+	return &FyneWindow{
+		w:      w,
+		tabs:   container.NewAppTabs(),
+		tabMap: make(map[string]*FyneTab), // ← REQUIRED
+	}
+}
+
 type FyneTab struct {
 	item *container.TabItem
 	log  *widget.Entry
 }
 
-func (fw *FyneWindow) SetTitle(t string)              { fw.w.SetTitle(t) }
-func (fw *FyneWindow) SetContent(c fyne.CanvasObject) { fw.w.SetContent(c) }
-func (fw *FyneWindow) Show()                          { fw.w.Show() }
-func (fw *FyneWindow) Close()                         { fw.w.Close() }
+func (fw *FyneWindow) SetTitle(t string) { fw.w.SetTitle(t) }
+func (fw *FyneWindow) SetContent(draw port.Drawer /*c fyne.CanvasObject*/) {
+
+	content := container.NewMax(
+		draw.Root(),
+	)
+	fw.w.SetContent(content)
+}
+func (fw *FyneWindow) Show()       { fw.w.Show() }
+func (fw *FyneWindow) Close()      { fw.w.Close() }
+func (fw *FyneWindow) CommitTabs() { fw.w.SetContent(fw.tabs) }
 func (fw *FyneWindow) SetResizable(resizable bool) {
 	// Fyne uses fixed-size toggle; resizable = not fixed
 	fw.w.SetFixedSize(!resizable)
@@ -74,6 +90,24 @@ func (fw *FyneWindow) UpsertTab(tabID, title string) {
 		log:  log,
 	}
 }
+
+func (fw *FyneWindow) AssignTab(tabID string, draw port.Drawer) {
+	fw.mu.Lock()
+	defer fw.mu.Unlock()
+
+	tab, ok := fw.tabMap[tabID]
+	if !ok {
+		return
+	}
+
+	content := container.NewMax(
+		draw.Root(),
+	)
+	tab.item.Content = content
+
+	fw.tabs.Refresh()
+}
+
 func (fw *FyneWindow) RemoveTab(tabID string) {
 	fyne.Do(func() {
 

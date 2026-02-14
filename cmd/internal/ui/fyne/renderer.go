@@ -17,7 +17,7 @@ func New() *Renderer {
 
 func (r *Renderer) NewExecutionWindow(title string) (port.ExecutionWindow, error) {
 	w := r.a.NewWindow(title)
-	return &FyneWindow{w: w}, nil
+	return NewFyneWindow(w), nil
 }
 
 func (r *Renderer) Run() {

@@ -1,12 +1,12 @@
 package port
 
-import "fyne.io/fyne/v2"
+import "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 
 type ExecutionWindow interface {
 	SetTitle(string)
 	Show()
 	Close()
-	SetContent(fyne.CanvasObject)
+	SetContent(port.Drawer) //(fyne.CanvasObject)
 	RunOnUI(func())
 
 	// capabilities you need in WidgetService:
@@ -16,6 +16,8 @@ type ExecutionWindow interface {
 	UpsertTab(tabID, title string)
 	RemoveTab(tabID string)
 
+	CommitTabs()
 	AppendLog(tabID, line string)
+	AssignTab(tabID string, draw port.Drawer)
 	//UpsertSeries(tabID, series string, points []Point)
 }
