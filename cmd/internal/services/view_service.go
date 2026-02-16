@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
+	"strings"
+	"time"
 
 	"github.com/gclkaze/evamon/cmd/internal/fs"
 	"github.com/gclkaze/evamon/cmd/internal/models"
@@ -21,7 +22,6 @@ type ViewService struct {
 	setup           MainSetup
 	registryService *ProjectsRegistryService
 	wservice        *WidgetService
-	windowHolders   sync.Map
 }
 
 func NewViewService(wService *WidgetService) *ViewService {
@@ -117,8 +117,30 @@ func (inst *ViewService) SetProjectRegistryService(registryService *ProjectsRegi
 }
 
 func (inst *ViewService) Render(vp *viewproject.ViewProject, headless bool) error {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		defer cancel()                            // optional: if worker ends, close app
+		inst.listenForMessages(ctx, vp, headless) // scheduler, websockets, etc.
+	}()
+
+	// Blocks here, but workers keep running
+	err := inst.wservice.CreateProjectUI(vp, inst.setup.GetProperties())
+	if err != nil {
+		return err
+	}
+
+	// Stop background work when app is closing
+	inst.wservice.SetOnClosed(func() {
+		cancel()
+	})
+
+	inst.wservice.Run()
+	return nil
+}
+
+func (inst *ViewService) listenForMessages(ctx context.Context, vp *viewproject.ViewProject, headless bool) error {
 	client := inst.setup.GetWSClient()
-	ctx := context.Background()
 	if err := client.Connect(ctx); err != nil {
 		return err
 	}
@@ -144,12 +166,6 @@ func (inst *ViewService) Render(vp *viewproject.ViewProject, headless bool) erro
 		return fmt.Errorf("listen failed: %s", ack.Error)
 	}
 
-	err := inst.wservice.CreateProjectUI(vp, inst.setup.GetProperties())
-	if err != nil {
-		return err
-	}
-	//	rend, err := ui.NewRenderer(ui.KindFyne)
-
 	for {
 		var resp models.WSMessage
 		if err := client.ReadJSONForever(ctx, &resp); err != nil {
@@ -160,16 +176,16 @@ func (inst *ViewService) Render(vp *viewproject.ViewProject, headless bool) erro
 		case "job.event":
 			var e models.ScriptEvent
 			if err := json.Unmarshal(resp.Data, &e); err != nil {
-				inst.logger.Error(err)
+				//inst.logger.Error(err)
 				continue
 			}
-			var s string
-			if err := json.Unmarshal(resp.Data, &s); err != nil {
-				inst.logger.Error(err)
-			} else {
-				inst.logger.Info(s)
+
+			var ex models.ExecutionMessage
+			if err := json.Unmarshal([]byte(e.Text), &ex); err != nil {
+				//inst.logger.Error(err)
+				continue
 			}
-			inst.logger.Info(fmt.Sprintf("[%s] %s: %s", e.JobID, e.Type, e.Text))
+			inst.dispatch(&ex)
 
 		case "job.listen":
 			if resp.Error != "" {
@@ -179,5 +195,24 @@ func (inst *ViewService) Render(vp *viewproject.ViewProject, headless bool) erro
 		default:
 		}
 	}
-	return nil
+
+}
+
+func (inst *ViewService) dispatch(ex *models.ExecutionMessage) {
+	if !strings.Contains(ex.Msg, "MetricsIndexSave Operation. Message:") {
+		return
+	}
+
+	start := strings.Index(ex.Msg, "{")
+	if start == -1 {
+		return
+	}
+
+	var msg models.MetricsMsg
+	err := json.Unmarshal([]byte(ex.Msg[start:]), &msg)
+	if err != nil {
+		return
+	}
+	inst.wservice.DispatchValue(msg.Index, time.UnixMilli(ex.T), msg.Value)
+	fmt.Print(msg)
 }

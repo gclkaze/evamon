@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/gclkaze/evamon/cmd/internal/models/ui"
 	"github.com/gclkaze/evamon/cmd/internal/output"
@@ -20,14 +21,13 @@ type WidgetService struct {
 	renderer      port.Renderer
 	drawerFactory porter.Factory
 	//it holds all view projects -> ref -> map[Variable]-> multiple widgets
+	variableContainer *ui.VariableContainer
+
+	uiHolder *ui.ProjectUIHolder
 }
 
-/*func NewWidgetService() *WidgetService {
-	return &WidgetService{}
-}*/
-
 func NewWidgetService(r port.Renderer, df porter.Factory) *WidgetService {
-	return &WidgetService{renderer: r, drawerFactory: df}
+	return &WidgetService{renderer: r, drawerFactory: df, variableContainer: ui.NewVariableContainer()}
 }
 
 func (inst *WidgetService) SetSetup(setup MainSetup) {
@@ -35,12 +35,16 @@ func (inst *WidgetService) SetSetup(setup MainSetup) {
 	inst.logger = setup.GetPrinter()
 }
 
+func (inst *WidgetService) SetOnClosed(close func()) {
+	inst.uiHolder.SetOnClosed(close)
+}
+
 func (inst *WidgetService) CreateProjectUI(vp *viewproject.ViewProject, props *properties.Properties) error {
 	if vp == nil || len(vp.View.Diagrams) == 0 || len(vp.View.Diagrams[0].Setup) == 0 {
 		return fmt.Errorf("invalid view project: missing diagrams/setup")
 	}
-	uiholder := ui.NewProjectUIHolder(vp, inst.renderer, inst.drawerFactory, props)
-	err := uiholder.Create()
+	inst.uiHolder = ui.NewProjectUIHolder(vp, inst.renderer, inst.drawerFactory, props, inst.variableContainer)
+	err := inst.uiHolder.Create()
 	if err != nil {
 		return err
 	}
@@ -49,4 +53,12 @@ func (inst *WidgetService) CreateProjectUI(vp *viewproject.ViewProject, props *p
 
 func (inst *WidgetService) Update(vp *viewproject.ViewProject) error {
 	return nil
+}
+
+func (inst *WidgetService) Run() {
+	inst.uiHolder.Run()
+}
+
+func (inst *WidgetService) DispatchValue(varName string, t time.Time, value any) {
+	inst.variableContainer.Push(varName, t, value)
 }

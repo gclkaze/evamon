@@ -34,11 +34,18 @@ func NewBoolFillDrawer(trueColor, falseColor color.Color) *BoolFillDrawer {
 func (d *BoolFillDrawer) Root() fyne.CanvasObject { return d.root }
 
 // Push updates ONLY the last value (fills the panel green/red etc).
-func (d *BoolFillDrawer) Push(_ time.Time, v bool) {
-	if v {
-		d.rect.FillColor = d.trueColor
-	} else {
-		d.rect.FillColor = d.falseColor
+func (d *BoolFillDrawer) Push(_ time.Time, val any) {
+	v, ok := val.(bool)
+	if !ok {
+		return // or panic in dev
 	}
-	d.rect.Refresh()
+
+	UI(func() {
+		if v {
+			d.rect.FillColor = d.trueColor
+		} else {
+			d.rect.FillColor = d.falseColor
+		}
+		d.rect.Refresh()
+	})
 }

@@ -19,5 +19,6 @@ type ExecutionWindow interface {
 	CommitTabs()
 	AppendLog(tabID, line string)
 	AssignTab(tabID string, draw port.Drawer)
+	SetOnClosed(close func())
 	//UpsertSeries(tabID, series string, points []Point)
 }

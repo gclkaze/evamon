@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"strconv"
+	"sync"
 
 	draw "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
@@ -26,11 +27,23 @@ type ProjectUIHolder struct {
 	defaultWidth     float32
 	defaultHeight    float32
 	defaultResizable bool
+	defaultMaxPoints int
+
+	vc *VariableContainer
+
+	mu          sync.RWMutex
+	unsubscribe map[string]map[draw.Drawer]func()
 }
 
-func NewProjectUIHolder(vp *viewproject.ViewProject, renderer port.Renderer, drawerFactory draw.Factory, props *properties.Properties) *ProjectUIHolder {
+func NewProjectUIHolder(vp *viewproject.ViewProject, renderer port.Renderer, drawerFactory draw.Factory, props *properties.Properties, vc *VariableContainer) *ProjectUIHolder {
 	//one window holder per view project
-	return &ProjectUIHolder{vp: vp, renderer: renderer, props: props, drawerFactory: drawerFactory}
+	return &ProjectUIHolder{vp: vp, renderer: renderer, props: props, drawerFactory: drawerFactory, vc: vc, unsubscribe: make(map[string]map[draw.Drawer]func())}
+}
+
+func (inst *ProjectUIHolder) SetOnClosed(close func()) {
+	for i := range inst.windows {
+		inst.windows[i].SetOnClosed(close)
+	}
 }
 
 func (inst *ProjectUIHolder) Create() error {
@@ -46,14 +59,14 @@ func (inst *ProjectUIHolder) Create() error {
 	var height *float32
 	var width *float32
 
+	windowStyle = inst.vp.View.WindowStyle
+	if windowStyle != nil {
+		height = windowStyle.Height
+		width = windowStyle.Width
+	}
+
 	if inst.isMultitab {
 		//for now, one window, multiple tabs
-		windowStyle = inst.vp.View.WindowStyle
-		if windowStyle != nil {
-			height = windowStyle.Height
-			width = windowStyle.Width
-		}
-
 		diagrams := inst.vp.View.Diagrams
 		ws, err := inst.setupAndBuildMultiTabbedDiagramWindow(diagrams, width, height)
 		if err != nil {
@@ -61,12 +74,6 @@ func (inst *ProjectUIHolder) Create() error {
 		}
 		inst.windows = ws
 	} else {
-		windowStyle = inst.vp.View.WindowStyle
-		if windowStyle != nil {
-			height = windowStyle.Height
-			width = windowStyle.Width
-		}
-
 		diagrams := inst.vp.View.Diagrams
 		for i := range diagrams {
 			ws, err := inst.setupAndBuildDiagrams(diagrams[i], windowStyle, width, height)
@@ -77,12 +84,15 @@ func (inst *ProjectUIHolder) Create() error {
 			inst.windows = ws
 		}
 	}
-	inst.renderer.Run()
 
 	return nil
 }
 
-func (inst ProjectUIHolder) setupAndBuildMultiTabbedDiagramWindow(diagrams []viewproject.Diagram, width *float32, height *float32) ([]port.ExecutionWindow, error) {
+func (inst *ProjectUIHolder) Run() {
+	inst.renderer.Run()
+}
+
+func (inst *ProjectUIHolder) setupAndBuildMultiTabbedDiagramWindow(diagrams []viewproject.Diagram, width *float32, height *float32) ([]port.ExecutionWindow, error) {
 
 	var ws []port.ExecutionWindow
 	for i := range diagrams {
@@ -98,7 +108,7 @@ func (inst ProjectUIHolder) setupAndBuildMultiTabbedDiagramWindow(diagrams []vie
 	return ws, nil
 }
 
-func (inst ProjectUIHolder) setupAndBuildDiagramsMultiTabed(diagram viewproject.Diagram, width *float32, height *float32) (port.ExecutionWindow, error) {
+func (inst *ProjectUIHolder) setupAndBuildDiagramsMultiTabed(diagram viewproject.Diagram, width *float32, height *float32) (port.ExecutionWindow, error) {
 	theSetupItems := diagram.Setup
 	w, err := inst.renderer.NewExecutionWindow("")
 	if err != nil {
@@ -121,7 +131,7 @@ func (inst ProjectUIHolder) setupAndBuildDiagramsMultiTabed(diagram viewproject.
 	return w, nil
 }
 
-func (inst ProjectUIHolder) setupAndBuildDiagrams(diagram viewproject.Diagram, windowStyle *viewproject.WindowStyle, width *float32, height *float32) ([]port.ExecutionWindow, error) {
+func (inst *ProjectUIHolder) setupAndBuildDiagrams(diagram viewproject.Diagram, windowStyle *viewproject.WindowStyle, width *float32, height *float32) ([]port.ExecutionWindow, error) {
 	theSetupItems := diagram.Setup
 	var ws []port.ExecutionWindow
 	for j := range theSetupItems {
@@ -150,64 +160,100 @@ func (inst ProjectUIHolder) setupAndBuildDiagrams(diagram viewproject.Diagram, w
 	}
 	return ws, nil
 }
-func (inst ProjectUIHolder) buildDiagram(w port.ExecutionWindow, setup viewproject.SetupItem) port.ExecutionWindow {
-	if setup.VariableType == viewproject.ValueTypeBoolean {
+func (inst *ProjectUIHolder) buildDiagram(w port.ExecutionWindow, setup viewproject.SetupItem) port.ExecutionWindow {
+	switch setup.VariableType {
+	case viewproject.ValueTypeBoolean:
 
-		var falseColor color.RGBA
-		var trueColor color.RGBA
-		if setup.DiagramStyle != nil {
-			if bs, ok := setup.DiagramStyle.(viewproject.BooleanStyle); ok {
-				trueColor = colornames.Map[bs.True]
-				falseColor = colornames.Map[bs.False]
-			}
-		} else {
-			falseColor = colornames.Map["red"]
-			trueColor = colornames.Map["green"]
-
-		}
-
-		boolFill := inst.drawerFactory.NewBoolFill(draw.BoolFillOptions{
-			TrueColor:  trueColor,
-			FalseColor: falseColor,
-		})
+		boolFill := inst.buildBooleanDiagram(setup)
 
 		w.SetContent(boolFill)
+		w.SetResizable(true)
+
+	case viewproject.ValueTypeInteger:
+
+		barChart := inst.buildBarchart(setup)
+
+		w.SetContent(barChart)
 		w.SetResizable(true)
 	}
 	return w
 }
 
-func (inst ProjectUIHolder) buildDiagramContent(setup viewproject.SetupItem) draw.Drawer {
-	if setup.VariableType == viewproject.ValueTypeBoolean {
-
-		var falseColor color.RGBA
-		var trueColor color.RGBA
-		if setup.DiagramStyle != nil {
-			if bs, ok := setup.DiagramStyle.(viewproject.BooleanStyle); ok {
-				trueColor = colornames.Map[bs.True]
-				falseColor = colornames.Map[bs.False]
-			}
-		} else {
-			falseColor = colornames.Map["red"]
-			trueColor = colornames.Map["green"]
-
+func (inst *ProjectUIHolder) buildBooleanDiagram(setup viewproject.SetupItem) draw.Drawer {
+	var falseColor color.RGBA
+	var trueColor color.RGBA
+	if setup.DiagramStyle != nil {
+		if bs, ok := setup.DiagramStyle.(viewproject.BooleanStyle); ok {
+			trueColor = colornames.Map[bs.True]
+			falseColor = colornames.Map[bs.False]
 		}
+	} else {
+		falseColor = colornames.Map["red"]
+		trueColor = colornames.Map["green"]
 
-		boolFill := inst.drawerFactory.NewBoolFill(draw.BoolFillOptions{
-			TrueColor:  trueColor,
-			FalseColor: falseColor,
-		})
+	}
 
-		/*		content := container.NewMax(
-				boolFill.Root(),
-			)*/
+	boolFill := inst.drawerFactory.NewBoolFill(draw.BoolFillOptions{
+		TrueColor:  trueColor,
+		FalseColor: falseColor,
+	})
+
+	inst.registerVariableDrawerUnsubscriber(setup.Variable, boolFill)
+	return boolFill
+}
+
+func (inst *ProjectUIHolder) buildBarchart(setup viewproject.SetupItem) draw.Drawer {
+	var axisColor color.RGBA
+	var backgroundColor color.RGBA
+	if setup.DiagramStyle != nil {
+		if bs, ok := setup.DiagramStyle.(viewproject.BarStyle); ok {
+			axisColor = colornames.Map[bs.Axis]
+			backgroundColor = colornames.Map[bs.Background]
+		}
+	} else {
+		axisColor = colornames.Map["red"]
+		backgroundColor = colornames.Map["green"]
+	}
+
+	barchart := inst.drawerFactory.NewBarChart(draw.BarChartOptions{
+		MaxPoints:  inst.defaultMaxPoints,
+		Width:      0,
+		Height:     0,
+		Axis:       axisColor,
+		Background: backgroundColor,
+	})
+
+	inst.registerVariableDrawerUnsubscriber(setup.Variable, barchart)
+	return barchart
+}
+
+func (inst *ProjectUIHolder) buildDiagramContent(setup viewproject.SetupItem) draw.Drawer {
+	switch setup.VariableType {
+	case viewproject.ValueTypeBoolean:
+		boolFill := inst.buildBooleanDiagram(setup)
 		return boolFill
-
+	case viewproject.ValueTypeInteger:
+		barChart := inst.buildBarchart(setup)
+		return barChart
 	}
 	return nil
 }
 
-func (inst ProjectUIHolder) styleWindow(window port.ExecutionWindow, w *float32, h *float32) port.ExecutionWindow {
+func (inst *ProjectUIHolder) registerVariableDrawerUnsubscriber(variableName string, drawer draw.Drawer) {
+	rem := inst.vc.Register(variableName, drawer)
+	inst.mu.Lock()
+	set := inst.unsubscribe[variableName]
+	if set == nil {
+		set = make(map[draw.Drawer]func())
+		inst.unsubscribe[variableName] = set
+	}
+
+	set[drawer] = func() {}
+	inst.unsubscribe[variableName][drawer] = rem
+	inst.mu.Unlock()
+}
+
+func (inst *ProjectUIHolder) styleWindow(window port.ExecutionWindow, w *float32, h *float32) port.ExecutionWindow {
 
 	if w != nil && h != nil {
 		window.Resize(float32(*w), float32(*h))
@@ -219,7 +265,7 @@ func (inst ProjectUIHolder) styleWindow(window port.ExecutionWindow, w *float32,
 	return window
 }
 
-func (inst ProjectUIHolder) styleTabbedWindow(window port.ExecutionWindow, w *float32, h *float32) port.ExecutionWindow {
+/*func (inst *ProjectUIHolder) styleTabbedWindow(window port.ExecutionWindow, w *float32, h *float32) port.ExecutionWindow {
 
 	if w != nil && h != nil {
 		window.Resize(float32(*w), float32(*h))
@@ -229,7 +275,7 @@ func (inst ProjectUIHolder) styleTabbedWindow(window port.ExecutionWindow, w *fl
 
 	window.SetResizable(inst.defaultResizable)
 	return window
-}
+}*/
 
 func (inst *ProjectUIHolder) Update() error {
 	return nil
@@ -243,4 +289,6 @@ func (inst *ProjectUIHolder) loadDefaults() {
 	inst.defaultWidth = inst.props.GetFloat32("default_window_width", 400)
 	inst.defaultHeight = inst.props.GetFloat32("default_window_height", 400)
 	inst.defaultResizable = inst.props.GetBool("default_window_resizable", false)
+
+	inst.defaultMaxPoints = inst.props.GetInt("default_barchart_maxpoints", 1000)
 }

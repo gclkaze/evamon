@@ -31,5 +31,5 @@ func (f *Factory) NewBoolFill(opts port.BoolFillOptions) port.Drawer {
 }
 
 func (f *Factory) NewBarChart(opts port.BarChartOptions) port.Drawer {
-	return NewBarChartDrawer(opts.MaxPoints, opts.Width, opts.Height)
+	return NewBarChartDrawer(opts.MaxPoints, opts.Width, opts.Height, opts.Axis, opts.Background)
 }

@@ -32,6 +32,10 @@ type FyneTab struct {
 	log  *widget.Entry
 }
 
+func (fw *FyneWindow) SetOnClosed(close func()) {
+	fw.w.SetOnClosed(close)
+}
+
 func (fw *FyneWindow) SetTitle(t string) { fw.w.SetTitle(t) }
 func (fw *FyneWindow) SetContent(draw port.Drawer /*c fyne.CanvasObject*/) {
 

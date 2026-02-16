@@ -16,9 +16,11 @@ type BoolFillOptions struct {
 }
 
 type BarChartOptions struct {
-	MaxPoints int
-	Width     float32
-	Height    float32
+	MaxPoints  int
+	Width      float32
+	Height     float32
+	Axis       color.Color
+	Background color.Color
 }
 
 type Factory interface {
