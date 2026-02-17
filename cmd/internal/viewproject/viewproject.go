@@ -35,9 +35,7 @@ type ViewWindow struct {
 //	  "view": { ...ViewWindow... }
 //	}
 type ViewProject struct {
-	ID string `json:"ID"`
-	// Absolute path of the project file (filled by loader)
-	ProjectPath string `json:"-"`
+	ProjectBase
 
 	JobID string     `json:"jobID"`
 	View  ViewWindow `json:"view"`

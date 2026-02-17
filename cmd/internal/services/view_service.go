@@ -15,6 +15,7 @@ import (
 	"github.com/gclkaze/evamon/cmd/internal/userinput"
 	"github.com/gclkaze/evamon/cmd/internal/viewproject"
 	"github.com/gclkaze/evamon/pkg/utils"
+	"golang.org/x/sync/errgroup"
 )
 
 type ViewService struct {
@@ -120,8 +121,8 @@ func (inst *ViewService) Render(vp *viewproject.ViewProject, headless bool) erro
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		defer cancel()                            // optional: if worker ends, close app
-		inst.listenForMessages(ctx, vp, headless) // scheduler, websockets, etc.
+		defer cancel()                                  // optional: if worker ends, close app
+		inst.listenForMessages(ctx, vp.JobID, headless) // scheduler, websockets, etc.
 	}()
 
 	// Blocks here, but workers keep running
@@ -139,13 +140,13 @@ func (inst *ViewService) Render(vp *viewproject.ViewProject, headless bool) erro
 	return nil
 }
 
-func (inst *ViewService) listenForMessages(ctx context.Context, vp *viewproject.ViewProject, headless bool) error {
+func (inst *ViewService) listenForMessages(ctx context.Context, jobID string, headless bool) error {
 	client := inst.setup.GetWSClient()
 	if err := client.Connect(ctx); err != nil {
 		return err
 	}
 	defer client.Close()
-	raw, _ := json.Marshal(vp.JobID)
+	raw, _ := json.Marshal(jobID)
 	msg := models.WSMessage{
 		Type: "job.listen",
 		Data: raw,
@@ -195,7 +196,48 @@ func (inst *ViewService) listenForMessages(ctx context.Context, vp *viewproject.
 		default:
 		}
 	}
+}
 
+func (inst *ViewService) RenderDashboard(dp *viewproject.DashboardProject, headless bool) error {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		defer cancel()                                     // optional: if worker ends, close app
+		inst.listenForDashboardMessages(ctx, dp, headless) // scheduler, websockets, etc.
+	}()
+
+	// Blocks here, but workers keep running
+	err := inst.wservice.CreateDashboardProjectUI(dp, inst.setup.GetProperties())
+	if err != nil {
+		return err
+	}
+
+	// Stop background work when app is closing
+	inst.wservice.SetOnClosed(func() {
+		cancel()
+	})
+
+	inst.wservice.Run()
+	return nil
+}
+
+func (inst *ViewService) listenForDashboardMessages(ctx context.Context, vp *viewproject.DashboardProject, headless bool) error {
+	jobIDs, err := vp.GetUniqueJobIDs()
+	if err != nil {
+		return err
+	}
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	for i := range jobIDs {
+		jobID := jobIDs[i]
+
+		g.Go(func() error {
+			return inst.listenForMessages(ctx, jobID, headless)
+		})
+	}
+
+	return g.Wait()
 }
 
 func (inst *ViewService) dispatch(ex *models.ExecutionMessage) {

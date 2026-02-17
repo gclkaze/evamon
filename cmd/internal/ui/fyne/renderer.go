@@ -9,17 +9,21 @@ import (
 
 type Renderer struct {
 	a fyne.App
+	l port.Layout
 }
 
 func New() *Renderer {
-	return &Renderer{a: app.New()}
+	return &Renderer{
+		a: app.New(),
+		l: Layout{},
+	}
 }
 
 func (r *Renderer) NewExecutionWindow(title string) (port.ExecutionWindow, error) {
 	w := r.a.NewWindow(title)
 	return NewFyneWindow(w), nil
 }
-
+func (r *Renderer) Layout() port.Layout { return r.l }
 func (r *Renderer) Run() {
 	r.a.Run()
 }

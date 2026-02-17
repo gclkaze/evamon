@@ -7,7 +7,8 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
-	"github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
+
+	exp "github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
 type FyneWindow struct {
@@ -19,13 +20,7 @@ type FyneWindow struct {
 	tabMap map[string]*FyneTab // <-- key part
 }
 
-func NewFyneWindow(w fyne.Window) *FyneWindow {
-	return &FyneWindow{
-		w:      w,
-		tabs:   container.NewAppTabs(),
-		tabMap: make(map[string]*FyneTab), // ← REQUIRED
-	}
-}
+func NewFyneWindow(w fyne.Window) *FyneWindow { return &FyneWindow{w: w} }
 
 type FyneTab struct {
 	item *container.TabItem
@@ -37,14 +32,8 @@ func (fw *FyneWindow) SetOnClosed(close func()) {
 }
 
 func (fw *FyneWindow) SetTitle(t string) { fw.w.SetTitle(t) }
-func (fw *FyneWindow) SetContent(draw port.DiagramWidget /*c fyne.CanvasObject*/) {
-
-	/*	content := container.NewMax(
-			draw.Root(),
-		)
-		fw.w.SetContent(content)
-	*/
-	fw.w.SetContent(container.NewMax(draw))
+func (fw *FyneWindow) SetContent(content exp.UIObject) {
+	fw.w.SetContent(unwrap(content))
 }
 func (fw *FyneWindow) Show()       { fw.w.Show() }
 func (fw *FyneWindow) Close()      { fw.w.Close() }
@@ -97,7 +86,7 @@ func (fw *FyneWindow) UpsertTab(tabID, title string) {
 	}
 }
 
-func (fw *FyneWindow) AssignTab(tabID string, draw port.DiagramWidget) {
+func (fw *FyneWindow) AssignTab(tabID string, draw exp.UIObject) {
 	fw.mu.Lock()
 	defer fw.mu.Unlock()
 
@@ -106,7 +95,7 @@ func (fw *FyneWindow) AssignTab(tabID string, draw port.DiagramWidget) {
 		return
 	}
 
-	tab.item.Content = draw
+	tab.item.Content = unwrap(draw)
 
 	fw.tabs.Refresh()
 }

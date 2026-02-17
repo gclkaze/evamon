@@ -1,12 +1,10 @@
 package port
 
-import "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
-
 type ExecutionWindow interface {
 	SetTitle(string)
 	Show()
 	Close()
-	SetContent(port.DiagramWidget) //(fyne.CanvasObject)
+	SetContent(content UIObject) //(fyne.CanvasObject)
 	RunOnUI(func())
 
 	// capabilities you need in WidgetService:
@@ -18,7 +16,7 @@ type ExecutionWindow interface {
 
 	CommitTabs()
 	AppendLog(tabID, line string)
-	AssignTab(tabID string, draw port.DiagramWidget)
+	AssignTab(tabID string, content UIObject)
 	SetOnClosed(close func())
 	//UpsertSeries(tabID, series string, points []Point)
 }

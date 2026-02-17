@@ -22,7 +22,7 @@ func NewBarChartWidget(drawer *BarChartDrawer) *BarChartWidget {
 func (w *BarChartWidget) Push(at time.Time, val any) {
 	w.drawer.Push(at, val)
 }
-
+func (w *BarChartWidget) Native() any { return w }
 func (w *BarChartWidget) CreateRenderer() fyne.WidgetRenderer {
 	root := w.drawer.Root()
 	return &barChartWidgetRenderer{

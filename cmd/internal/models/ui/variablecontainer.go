@@ -9,19 +9,19 @@ import (
 
 type VariableContainer struct {
 	mu      sync.RWMutex
-	drawers map[string]map[port.DiagramWidget]struct{}
+	drawers map[string]map[port.EvaWidget]struct{}
 }
 
 func NewVariableContainer() *VariableContainer {
-	return &VariableContainer{drawers: make(map[string]map[port.DiagramWidget]struct{})}
+	return &VariableContainer{drawers: make(map[string]map[port.EvaWidget]struct{})}
 }
 
-func (inst *VariableContainer) Register(variableName string, drawer port.DiagramWidget /*port.Drawer*/) (remove func()) {
+func (inst *VariableContainer) Register(variableName string, drawer port.EvaWidget /*port.Drawer*/) (remove func()) {
 	inst.mu.Lock()
 
 	set := inst.drawers[variableName]
 	if set == nil {
-		set = make(map[port.DiagramWidget]struct{})
+		set = make(map[port.EvaWidget]struct{})
 		inst.drawers[variableName] = set
 	}
 
@@ -49,7 +49,7 @@ func (inst *VariableContainer) Push(varName string, t time.Time, v any) {
 	set := inst.drawers[varName]
 
 	// Copy to slice to avoid holding lock during callbacks
-	drawers := make([]port.DiagramWidget, 0, len(set))
+	drawers := make([]port.EvaWidget, 0, len(set))
 	for d := range set {
 		drawers = append(drawers, d)
 	}
@@ -60,4 +60,10 @@ func (inst *VariableContainer) Push(varName string, t time.Time, v any) {
 	for _, d := range drawers {
 		d.Push(t, v)
 	}
+}
+
+func (inst *VariableContainer) IsEmpty() bool {
+	inst.mu.RLock()
+	defer inst.mu.RUnlock()
+	return len(inst.drawers) == 0
 }

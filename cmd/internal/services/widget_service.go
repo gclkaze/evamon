@@ -22,12 +22,14 @@ type WidgetService struct {
 	drawerFactory porter.Factory
 	//it holds all view projects -> ref -> map[Variable]-> multiple widgets
 	variableContainer *ui.VariableContainer
+	jobRouter         *ui.JobRouter
 
-	uiHolder *ui.ProjectUIHolder
+	uiHolder        *ui.ProjectUIHolder
+	dashboardHolder *ui.DashboardUIHolder
 }
 
 func NewWidgetService(r port.Renderer, df porter.Factory) *WidgetService {
-	return &WidgetService{renderer: r, drawerFactory: df, variableContainer: ui.NewVariableContainer()}
+	return &WidgetService{renderer: r, drawerFactory: df, variableContainer: ui.NewVariableContainer(), jobRouter: ui.NewJobRouter()}
 }
 
 func (inst *WidgetService) SetSetup(setup MainSetup) {
@@ -45,6 +47,18 @@ func (inst *WidgetService) CreateProjectUI(vp *viewproject.ViewProject, props *p
 	}
 	inst.uiHolder = ui.NewProjectUIHolder(vp, inst.renderer, inst.drawerFactory, props, inst.variableContainer)
 	err := inst.uiHolder.Create()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (inst *WidgetService) CreateDashboardProjectUI(dp *viewproject.DashboardProject, props *properties.Properties) error {
+	if dp == nil || dp.IsEmpty() {
+		return fmt.Errorf("invalid dashboard project: the project is empty")
+	}
+	inst.dashboardHolder = ui.NewDashboardUIHolder(dp, inst.renderer, inst.drawerFactory, props, inst.jobRouter)
+	err := inst.dashboardHolder.Create()
 	if err != nil {
 		return err
 	}

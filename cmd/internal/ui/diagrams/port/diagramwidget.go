@@ -3,10 +3,14 @@ package port
 import (
 	"time"
 
-	"fyne.io/fyne/v2"
+	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
-type DiagramWidget interface {
-	fyne.CanvasObject
+type EvaWidget interface {
 	Push(at time.Time, val any)
+}
+
+type DiagramWidget interface {
+	uport.UIObject
+	EvaWidget
 }
