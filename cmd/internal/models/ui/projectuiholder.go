@@ -32,12 +32,12 @@ type ProjectUIHolder struct {
 	vc *VariableContainer
 
 	mu          sync.RWMutex
-	unsubscribe map[string]map[draw.Drawer]func()
+	unsubscribe map[string]map[draw.DiagramWidget]func()
 }
 
 func NewProjectUIHolder(vp *viewproject.ViewProject, renderer port.Renderer, drawerFactory draw.Factory, props *properties.Properties, vc *VariableContainer) *ProjectUIHolder {
 	//one window holder per view project
-	return &ProjectUIHolder{vp: vp, renderer: renderer, props: props, drawerFactory: drawerFactory, vc: vc, unsubscribe: make(map[string]map[draw.Drawer]func())}
+	return &ProjectUIHolder{vp: vp, renderer: renderer, props: props, drawerFactory: drawerFactory, vc: vc, unsubscribe: make(map[string]map[draw.DiagramWidget]func())}
 }
 
 func (inst *ProjectUIHolder) SetOnClosed(close func()) {
@@ -179,7 +179,7 @@ func (inst *ProjectUIHolder) buildDiagram(w port.ExecutionWindow, setup viewproj
 	return w
 }
 
-func (inst *ProjectUIHolder) buildBooleanDiagram(setup viewproject.SetupItem) draw.Drawer {
+func (inst *ProjectUIHolder) buildBooleanDiagram(setup viewproject.SetupItem) draw.DiagramWidget {
 	var falseColor color.RGBA
 	var trueColor color.RGBA
 	if setup.DiagramStyle != nil {
@@ -202,7 +202,7 @@ func (inst *ProjectUIHolder) buildBooleanDiagram(setup viewproject.SetupItem) dr
 	return boolFill
 }
 
-func (inst *ProjectUIHolder) buildBarchart(setup viewproject.SetupItem) draw.Drawer {
+func (inst *ProjectUIHolder) buildBarchart(setup viewproject.SetupItem) draw.DiagramWidget {
 	var axisColor color.RGBA
 	var backgroundColor color.RGBA
 	if setup.DiagramStyle != nil {
@@ -227,7 +227,7 @@ func (inst *ProjectUIHolder) buildBarchart(setup viewproject.SetupItem) draw.Dra
 	return barchart
 }
 
-func (inst *ProjectUIHolder) buildDiagramContent(setup viewproject.SetupItem) draw.Drawer {
+func (inst *ProjectUIHolder) buildDiagramContent(setup viewproject.SetupItem) draw.DiagramWidget {
 	switch setup.VariableType {
 	case viewproject.ValueTypeBoolean:
 		boolFill := inst.buildBooleanDiagram(setup)
@@ -239,12 +239,12 @@ func (inst *ProjectUIHolder) buildDiagramContent(setup viewproject.SetupItem) dr
 	return nil
 }
 
-func (inst *ProjectUIHolder) registerVariableDrawerUnsubscriber(variableName string, drawer draw.Drawer) {
+func (inst *ProjectUIHolder) registerVariableDrawerUnsubscriber(variableName string /* drawer draw.Drawer*/, drawer draw.DiagramWidget) {
 	rem := inst.vc.Register(variableName, drawer)
 	inst.mu.Lock()
 	set := inst.unsubscribe[variableName]
 	if set == nil {
-		set = make(map[draw.Drawer]func())
+		set = make(map[draw.DiagramWidget]func())
 		inst.unsubscribe[variableName] = set
 	}
 
@@ -264,18 +264,6 @@ func (inst *ProjectUIHolder) styleWindow(window port.ExecutionWindow, w *float32
 	window.SetResizable(inst.defaultResizable)
 	return window
 }
-
-/*func (inst *ProjectUIHolder) styleTabbedWindow(window port.ExecutionWindow, w *float32, h *float32) port.ExecutionWindow {
-
-	if w != nil && h != nil {
-		window.Resize(float32(*w), float32(*h))
-	} else {
-		window.Resize(inst.defaultWidth, inst.defaultHeight)
-	}
-
-	window.SetResizable(inst.defaultResizable)
-	return window
-}*/
 
 func (inst *ProjectUIHolder) Update() error {
 	return nil

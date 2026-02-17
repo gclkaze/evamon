@@ -49,3 +49,7 @@ func (d *BoolFillDrawer) Push(_ time.Time, val any) {
 		d.rect.Refresh()
 	})
 }
+
+func (d *BoolFillDrawer) Redraw() {
+
+}

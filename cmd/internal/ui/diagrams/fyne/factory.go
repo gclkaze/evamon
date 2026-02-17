@@ -18,7 +18,24 @@ func NewFactory() *Factory {
 	}
 }
 
-func (f *Factory) NewBoolFill(opts port.BoolFillOptions) port.Drawer {
+/*
+	func (f *Factory) NewBoolFill(opts port.BoolFillOptions) port.Drawer {
+		trueC := opts.TrueColor
+		falseC := opts.FalseColor
+		if trueC == nil {
+			trueC = f.defaultTrue
+		}
+		if falseC == nil {
+			falseC = f.defaultFalse
+		}
+		return NewBoolFillDrawer(trueC, falseC)
+	}
+
+	func (f *Factory) NewBarChart(opts port.BarChartOptions) port.Drawer {
+		return NewBarChartDrawer(opts.MaxPoints, opts.Width, opts.Height, opts.Axis, opts.Background)
+	}
+*/
+func (f *Factory) NewBoolFill(opts port.BoolFillOptions) port.DiagramWidget {
 	trueC := opts.TrueColor
 	falseC := opts.FalseColor
 	if trueC == nil {
@@ -27,9 +44,12 @@ func (f *Factory) NewBoolFill(opts port.BoolFillOptions) port.Drawer {
 	if falseC == nil {
 		falseC = f.defaultFalse
 	}
-	return NewBoolFillDrawer(trueC, falseC)
+
+	drawer := NewBoolFillDrawer(trueC, falseC)
+	return NewBoolFillWidget(drawer) // tiny wrapper to satisfy DiagramWidget
 }
 
-func (f *Factory) NewBarChart(opts port.BarChartOptions) port.Drawer {
-	return NewBarChartDrawer(opts.MaxPoints, opts.Width, opts.Height, opts.Axis, opts.Background)
+func (f *Factory) NewBarChart(opts port.BarChartOptions) port.DiagramWidget {
+	drawer := NewBarChartDrawer(opts.MaxPoints, opts.Width, opts.Height, opts.Axis, opts.Background)
+	return NewBarChartWidget(drawer) // the resize-aware wrapper
 }

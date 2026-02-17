@@ -37,12 +37,14 @@ func (fw *FyneWindow) SetOnClosed(close func()) {
 }
 
 func (fw *FyneWindow) SetTitle(t string) { fw.w.SetTitle(t) }
-func (fw *FyneWindow) SetContent(draw port.Drawer /*c fyne.CanvasObject*/) {
+func (fw *FyneWindow) SetContent(draw port.DiagramWidget /*c fyne.CanvasObject*/) {
 
-	content := container.NewMax(
-		draw.Root(),
-	)
-	fw.w.SetContent(content)
+	/*	content := container.NewMax(
+			draw.Root(),
+		)
+		fw.w.SetContent(content)
+	*/
+	fw.w.SetContent(container.NewMax(draw))
 }
 func (fw *FyneWindow) Show()       { fw.w.Show() }
 func (fw *FyneWindow) Close()      { fw.w.Close() }
@@ -95,7 +97,7 @@ func (fw *FyneWindow) UpsertTab(tabID, title string) {
 	}
 }
 
-func (fw *FyneWindow) AssignTab(tabID string, draw port.Drawer) {
+func (fw *FyneWindow) AssignTab(tabID string, draw port.DiagramWidget) {
 	fw.mu.Lock()
 	defer fw.mu.Unlock()
 
@@ -104,10 +106,7 @@ func (fw *FyneWindow) AssignTab(tabID string, draw port.Drawer) {
 		return
 	}
 
-	content := container.NewMax(
-		draw.Root(),
-	)
-	tab.item.Content = content
+	tab.item.Content = draw
 
 	fw.tabs.Refresh()
 }

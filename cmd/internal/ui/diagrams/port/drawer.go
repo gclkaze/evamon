@@ -10,6 +10,7 @@ import (
 type Drawer interface {
 	Root() fyne.CanvasObject
 	Push(at time.Time, v any)
+	Redraw()
 }
 
 type ResizableDrawer struct {

@@ -9,19 +9,19 @@ import (
 
 type VariableContainer struct {
 	mu      sync.RWMutex
-	drawers map[string]map[port.Drawer]struct{}
+	drawers map[string]map[port.DiagramWidget]struct{}
 }
 
 func NewVariableContainer() *VariableContainer {
-	return &VariableContainer{drawers: make(map[string]map[port.Drawer]struct{})}
+	return &VariableContainer{drawers: make(map[string]map[port.DiagramWidget]struct{})}
 }
 
-func (inst *VariableContainer) Register(variableName string, drawer port.Drawer) (remove func()) {
+func (inst *VariableContainer) Register(variableName string, drawer port.DiagramWidget /*port.Drawer*/) (remove func()) {
 	inst.mu.Lock()
 
 	set := inst.drawers[variableName]
 	if set == nil {
-		set = make(map[port.Drawer]struct{})
+		set = make(map[port.DiagramWidget]struct{})
 		inst.drawers[variableName] = set
 	}
 
@@ -49,7 +49,7 @@ func (inst *VariableContainer) Push(varName string, t time.Time, v any) {
 	set := inst.drawers[varName]
 
 	// Copy to slice to avoid holding lock during callbacks
-	drawers := make([]port.Drawer, 0, len(set))
+	drawers := make([]port.DiagramWidget, 0, len(set))
 	for d := range set {
 		drawers = append(drawers, d)
 	}

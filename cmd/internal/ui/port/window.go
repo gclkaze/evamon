@@ -6,7 +6,7 @@ type ExecutionWindow interface {
 	SetTitle(string)
 	Show()
 	Close()
-	SetContent(port.Drawer) //(fyne.CanvasObject)
+	SetContent(port.DiagramWidget) //(fyne.CanvasObject)
 	RunOnUI(func())
 
 	// capabilities you need in WidgetService:
@@ -18,7 +18,7 @@ type ExecutionWindow interface {
 
 	CommitTabs()
 	AppendLog(tabID, line string)
-	AssignTab(tabID string, draw port.Drawer)
+	AssignTab(tabID string, draw port.DiagramWidget)
 	SetOnClosed(close func())
 	//UpsertSeries(tabID, series string, points []Point)
 }

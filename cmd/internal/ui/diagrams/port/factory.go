@@ -24,6 +24,6 @@ type BarChartOptions struct {
 }
 
 type Factory interface {
-	NewBoolFill(opts BoolFillOptions) Drawer
-	NewBarChart(opts BarChartOptions) Drawer
+	NewBoolFill(opts BoolFillOptions) DiagramWidget
+	NewBarChart(opts BarChartOptions) DiagramWidget
 }
