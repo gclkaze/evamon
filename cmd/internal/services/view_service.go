@@ -34,33 +34,76 @@ func (inst *ViewService) SetSetup(setup MainSetup) {
 	inst.logger = setup.GetPrinter()
 }
 
-func (inst *ViewService) ViewAttach(params *userinput.ViewAttachParams) error {
+func (inst *ViewService) JobIDExists(jobID string) (bool, error) {
 	client := inst.setup.GetWSClient()
 	ctx := context.Background()
 	if err := client.Connect(ctx); err != nil {
-		return err
+		return false, err
 	}
 	defer client.Close()
-	raw, _ := json.Marshal(params.JobID)
+	raw, _ := json.Marshal(jobID)
 	msg := models.WSMessage{
 		Type: "job.exists",
 		Data: raw,
 	}
 
 	if err := client.SendJSON(ctx, msg); err != nil {
-		return err
+		return false, err
 	}
 
 	var resp models.WSMessage
 	if err := client.ReadJSON(ctx, &resp); err != nil {
-		return err
+		return false, err
 	}
 	val, err := resp.DataAsBool()
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	if !val {
+		return false, fmt.Errorf("JobID '%s' does not exist in evacron", jobID)
+	}
+	return true, nil
+}
+
+func (inst *ViewService) JobIDsExist(jobIDs []string) (map[string]bool, error) {
+	client := inst.setup.GetWSClient()
+	ctx := context.Background()
+	if err := client.Connect(ctx); err != nil {
+		return nil, err
+	}
+	defer client.Close()
+	raw, _ := json.Marshal(jobIDs)
+	msg := models.WSMessage{
+		Type: "job.exist",
+		Data: raw,
+	}
+
+	if err := client.SendJSON(ctx, msg); err != nil {
+		return nil, err
+	}
+
+	var resp models.WSMessage
+	if err := client.ReadJSON(ctx, &resp); err != nil {
+		return nil, err
+	}
+	val, err := resp.DataAsBoolMap()
+	if err != nil {
+		return nil, err
+	}
+
+	if val == nil {
+		return nil, fmt.Errorf("the returned truth map is empty")
+	}
+	return val, nil
+}
+
+func (inst *ViewService) ViewAttach(params *userinput.ViewAttachParams) error {
+	exists, err := inst.JobIDExists(params.JobID)
+	if err != nil {
+		return err
+	}
+	if !exists {
 		return fmt.Errorf("JobID '%s' does not exist in evacron", params.JobID)
 	}
 
@@ -118,6 +161,11 @@ func (inst *ViewService) SetProjectRegistryService(registryService *ProjectsRegi
 }
 
 func (inst *ViewService) Render(vp *viewproject.ViewProject, headless bool) error {
+	_, err := inst.JobIDExists(vp.JobID)
+	if err != nil {
+		return err
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
@@ -126,7 +174,7 @@ func (inst *ViewService) Render(vp *viewproject.ViewProject, headless bool) erro
 	}()
 
 	// Blocks here, but workers keep running
-	err := inst.wservice.CreateProjectUI(vp, inst.setup.GetProperties())
+	err = inst.wservice.CreateProjectUI(vp, inst.setup.GetProperties())
 	if err != nil {
 		return err
 	}
@@ -186,7 +234,7 @@ func (inst *ViewService) listenForMessages(ctx context.Context, jobID string, he
 				//inst.logger.Error(err)
 				continue
 			}
-			inst.dispatch(&ex)
+			inst.dispatch(e.JobID, &ex)
 
 		case "job.listen":
 			if resp.Error != "" {
@@ -198,12 +246,12 @@ func (inst *ViewService) listenForMessages(ctx context.Context, jobID string, he
 	}
 }
 
-func (inst *ViewService) RenderDashboard(dp *viewproject.DashboardProject, headless bool) error {
+func (inst *ViewService) RenderDashboard(dp *viewproject.DashboardProject) error {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		defer cancel()                                     // optional: if worker ends, close app
-		inst.listenForDashboardMessages(ctx, dp, headless) // scheduler, websockets, etc.
+		defer cancel()                           // optional: if worker ends, close app
+		inst.listenForDashboardMessages(ctx, dp) // scheduler, websockets, etc.
 	}()
 
 	// Blocks here, but workers keep running
@@ -221,7 +269,7 @@ func (inst *ViewService) RenderDashboard(dp *viewproject.DashboardProject, headl
 	return nil
 }
 
-func (inst *ViewService) listenForDashboardMessages(ctx context.Context, vp *viewproject.DashboardProject, headless bool) error {
+func (inst *ViewService) listenForDashboardMessages(ctx context.Context, vp *viewproject.DashboardProject) error {
 	jobIDs, err := vp.GetUniqueJobIDs()
 	if err != nil {
 		return err
@@ -233,14 +281,14 @@ func (inst *ViewService) listenForDashboardMessages(ctx context.Context, vp *vie
 		jobID := jobIDs[i]
 
 		g.Go(func() error {
-			return inst.listenForMessages(ctx, jobID, headless)
+			return inst.listenForMessages(ctx, jobID, false)
 		})
 	}
 
 	return g.Wait()
 }
 
-func (inst *ViewService) dispatch(ex *models.ExecutionMessage) {
+func (inst *ViewService) dispatch(jobID string, ex *models.ExecutionMessage) {
 	if !strings.Contains(ex.Msg, "MetricsIndexSave Operation. Message:") {
 		return
 	}
@@ -255,6 +303,6 @@ func (inst *ViewService) dispatch(ex *models.ExecutionMessage) {
 	if err != nil {
 		return
 	}
-	inst.wservice.DispatchValue(msg.Index, time.UnixMilli(ex.T), msg.Value)
+	inst.wservice.DispatchValue(jobID, msg.Index, time.UnixMilli(ex.T), msg.Value)
 	fmt.Print(msg)
 }

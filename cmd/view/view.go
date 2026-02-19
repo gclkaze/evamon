@@ -14,6 +14,8 @@ func NewViewCmd(app *app.Evamon) *cobra.Command {
 	viewCmd.AddCommand(NewViewAttachCmd(app))
 	viewCmd.AddCommand(NewViewLsCmd(app))
 	viewCmd.AddCommand(NewViewRenderCmd(app))
+	viewCmd.AddCommand(NewDashboardRenderCmd(app))
+	
 
 	return viewCmd
 }

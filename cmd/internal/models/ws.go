@@ -25,3 +25,16 @@ func (m *WSMessage) DataAsBool() (bool, error) {
 
 	return b, nil
 }
+
+func (m *WSMessage) DataAsBoolMap() (map[string]bool, error) {
+	if m.Data == nil {
+		return nil, nil
+	}
+
+	b := make(map[string]bool)
+	if err := json.Unmarshal(m.Data, &b); err != nil {
+		return nil, fmt.Errorf("data is not a map of booleans: %w", err)
+	}
+
+	return b, nil
+}

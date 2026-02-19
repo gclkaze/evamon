@@ -221,3 +221,66 @@ func (inst *Evamon) RenderViewProject(params *userinput.ViewRenderParams) error 
 	// Delegate to renderer with headless mode
 	return inst.viewService.Render(vp, params.Headless)
 }
+
+func (inst *Evamon) JobIDsExist(d *viewproject.DashboardProject) error {
+	IDs, err := d.GetUniqueJobIDs()
+	if err != nil {
+		return err
+	}
+
+	if len(IDs) == 0 {
+		return fmt.Errorf("the Dashboard job IDs are empty...you need to reference at least a running and registered job ID in order to make a useful Dashboard :)")
+	}
+
+	jobsExist, err := inst.viewService.JobIDsExist(IDs)
+	if err != nil {
+		return err
+	}
+
+	if jobsExist == nil {
+		return fmt.Errorf("the returned Dashboard job IDs are empty...you need to reference at least a running and registered job ID in order to make a useful Dashboard :) something is off")
+	}
+
+	//with at least 1 running job, we are going to show the dashboard
+	sum := 0
+	for k, v := range jobsExist {
+		if !v {
+			inst.logger.Warn(fmt.Sprintf("Referenced job '%s' is not running", k))
+		} else {
+			sum++
+		}
+	}
+
+	if sum == 0 {
+		err = fmt.Errorf("no referenced job is running in 'evacron'..exiting")
+		return err
+	}
+	return nil
+}
+
+func (inst *Evamon) RenderDashboardViewProject(params *userinput.ViewDashboardRenderParams) error {
+	if params == nil {
+		return fmt.Errorf("nil params")
+	}
+	if inst.registryService == nil {
+		return fmt.Errorf("project registry is not initialized")
+	}
+	if err := params.IsValid(); err != nil {
+		return err
+	}
+
+	// Load project
+	vp, err := viewproject.LoadDashboardProject(params.Path)
+	//LoadViewProject(path)
+	if err != nil {
+		return err
+	}
+
+	err = inst.JobIDsExist(vp)
+	if err != nil {
+		return err
+	}
+
+	// Delegate to renderer with headless mode
+	return inst.viewService.RenderDashboard(vp)
+}

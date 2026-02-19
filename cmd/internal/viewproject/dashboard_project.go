@@ -126,7 +126,7 @@ func LoadDashboardProject(path string) (*DashboardProject, error) {
 // Validation
 // ============================================================
 
-func (dp DashboardProject) Validate() error {
+func (dp *DashboardProject) Validate() error {
 	if strings.TrimSpace(dp.ID) == "" {
 		return fmt.Errorf("ID is required")
 	}

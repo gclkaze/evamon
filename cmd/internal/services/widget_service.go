@@ -38,7 +38,13 @@ func (inst *WidgetService) SetSetup(setup MainSetup) {
 }
 
 func (inst *WidgetService) SetOnClosed(close func()) {
-	inst.uiHolder.SetOnClosed(close)
+	if inst.uiHolder != nil {
+		inst.uiHolder.SetOnClosed(close)
+	}
+
+	if inst.dashboardHolder != nil {
+		inst.dashboardHolder.SetOnClosed(close)
+	}
 }
 
 func (inst *WidgetService) CreateProjectUI(vp *viewproject.ViewProject, props *properties.Properties) error {
@@ -58,7 +64,7 @@ func (inst *WidgetService) CreateDashboardProjectUI(dp *viewproject.DashboardPro
 		return fmt.Errorf("invalid dashboard project: the project is empty")
 	}
 	inst.dashboardHolder = ui.NewDashboardUIHolder(dp, inst.renderer, inst.drawerFactory, props, inst.jobRouter)
-	err := inst.dashboardHolder.Create()
+	err := inst.dashboardHolder.Create(dp)
 	if err != nil {
 		return err
 	}
@@ -70,9 +76,18 @@ func (inst *WidgetService) Update(vp *viewproject.ViewProject) error {
 }
 
 func (inst *WidgetService) Run() {
-	inst.uiHolder.Run()
+	if inst.uiHolder != nil {
+		inst.uiHolder.Run()
+	}
+
+	if inst.dashboardHolder != nil {
+		inst.dashboardHolder.Run()
+	}
 }
 
-func (inst *WidgetService) DispatchValue(varName string, t time.Time, value any) {
+func (inst *WidgetService) DispatchValue(jobID string, varName string, t time.Time, value any) {
+	if inst.jobRouter != nil {
+		inst.jobRouter.Push(jobID, varName, t, value)
+	}
 	inst.variableContainer.Push(varName, t, value)
 }

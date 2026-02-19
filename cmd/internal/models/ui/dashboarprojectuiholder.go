@@ -36,17 +36,19 @@ func NewDashboardUIHolder(dp *viewproject.DashboardProject, renderer port.Render
 func (inst *DashboardUIHolder) SetOnClosed(close func()) {
 	inst.window.SetOnClosed(close)
 }
-func (inst *DashboardUIHolder) Create() error {
+func (inst *DashboardUIHolder) Create(dp *viewproject.DashboardProject) error {
 
-	win, _ := inst.renderer.NewExecutionWindow(inst.dp.Title)
+	win, err := inst.renderer.NewExecutionWindow(inst.dp.Title)
 
+	if err != nil {
+		return err
+	}
 	layout := inst.renderer.Layout()
 	builder := dashboardbuilder.New(layout, inst.drawerFactory)
 
-	dp, _ := viewproject.LoadDashboardProject("dashboard.json")
 	res, err := builder.BuildDashboard(dp)
 	if err != nil {
-		panic(err)
+		return nil
 	}
 
 	win.SetContent(res.Root)
@@ -57,6 +59,8 @@ func (inst *DashboardUIHolder) Create() error {
 	for _, b := range res.Bindings {
 		inst.jobRouter.Register(b.JobID, b.Variable, b.Sink)
 	}
+
+	inst.window = win
 
 	return nil
 }
