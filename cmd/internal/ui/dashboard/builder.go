@@ -3,11 +3,13 @@ package dashboardbuilder
 import (
 	"fmt"
 	"image/color"
+	"strings"
 	"time"
 
 	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
 	"golang.org/x/image/colornames"
 
+	"github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 	dport "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 	vp "github.com/gclkaze/evamon/cmd/internal/viewproject"
 )
@@ -30,12 +32,23 @@ type BuildResult struct {
 type Builder struct {
 	Layout  uport.Layout
 	Factory dport.Factory // NewBoolFill / NewBarChart etc.
+
+	MinChartWidth  float32
+	MinChartHeight float32
+
+	MinChartBooleanWidth  float32
+	MinChartBooleanHeight float32
 }
 
 func New(layout uport.Layout, factory dport.Factory) *Builder {
 	return &Builder{
-		Layout:  layout,
-		Factory: factory,
+		Layout:         layout,
+		Factory:        factory,
+		MinChartWidth:  400,
+		MinChartHeight: 259,
+
+		MinChartBooleanWidth:  100,
+		MinChartBooleanHeight: 100,
 	}
 }
 
@@ -68,6 +81,9 @@ func (b *Builder) BuildDashboard(dp *vp.DashboardProject) (*BuildResult, error) 
 	}
 
 	root := b.Layout.Tabs(tabs...)
+
+	root = b.Layout.VScroll(root)
+
 	return &BuildResult{
 		Root:     root,
 		Bindings: allBindings,
@@ -174,17 +190,48 @@ func (b *Builder) buildDiagramForJob(jobID string, d *vp.Diagram) (uport.UIObjec
 	if len(d.Setup) == 0 {
 		return b.Layout.VBox(), nil, nil
 	}
-
+	var (
+		content  uport.UIObject
+		bindings []BindingTarget
+		err      error
+	)
 	switch d.Type {
 	case vp.DiagramTypeBoolean:
-		return b.buildBooleanDiagram(jobID, d)
-
+		content, bindings, err = b.buildBooleanDiagram(jobID, d)
 	case vp.DiagramTypeBar:
-		return b.buildBarDiagram(jobID, d)
-
+		content, bindings, err = b.buildBarDiagram(jobID, d)
+	case vp.DiagramTypeLine:
+		content, bindings, err = b.buildLineDiagram(jobID, d)
 	default:
 		return nil, nil, fmt.Errorf("unsupported diagram type %q", d.Type)
 	}
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return b.wrapWithDiagramTitle(jobID, d, content), bindings, nil
+}
+
+func (b *Builder) wrapWithDiagramTitle(jobID string, d *vp.Diagram, content uport.UIObject) uport.UIObject {
+	title := strings.TrimSpace(content.Title())
+	if title == "" {
+		// Good fallbacks: first setup title, first variable, or jobID/type
+		if len(d.Setup) == 1 {
+			// if your setup items have Title/Variable fields
+			if t := strings.TrimSpace(d.Setup[0].Title); t != "" {
+				title = t
+			} else if v := strings.TrimSpace(d.Setup[0].Variable); v != "" {
+				title = v
+			}
+		}
+	}
+	/*	if title == "" {
+			title = jobID
+		}
+	*/
+	// Card gives you a proper "titled box"
+	return b.Layout.Card(title, "", content)
 }
 
 func (b *Builder) buildBooleanDiagram(jobID string, d *vp.Diagram) (uport.UIObject, []BindingTarget, error) {
@@ -193,6 +240,15 @@ func (b *Builder) buildBooleanDiagram(jobID string, d *vp.Diagram) (uport.UIObje
 
 	for si := range d.Setup {
 		s := d.Setup[si]
+
+		// ---- title per setup item (rendered via Layout, no Fyne imports here) ----
+		titleText := strings.TrimSpace(s.Title)
+		if titleText == "" {
+			titleText = strings.TrimSpace(s.Variable)
+		}
+		if titleText != "" {
+			parts = append(parts, b.Layout.Title(titleText))
+		}
 
 		// Extract style if present
 		var trueColor, falseColor color.RGBA
@@ -208,17 +264,23 @@ func (b *Builder) buildBooleanDiagram(jobID string, d *vp.Diagram) (uport.UIObje
 			trueColor = colornames.Map["green"]
 		}
 
+		// Build widget; since we render title outside, avoid duplicating it inside the widget
 		w := b.Factory.NewBoolFill(dport.BoolFillOptions{
 			TrueColor:  trueColor,
 			FalseColor: falseColor,
-		})
+		}, "", s.Description, b.MinChartBooleanWidth, b.MinChartBooleanHeight)
 
-		parts = append(parts, w) // DiagramWidget is also UIObject
+		parts = append(parts, w)
 		bindings = append(bindings, BindingTarget{
 			JobID:    jobID,
 			Variable: s.Variable,
-			Sink:     w, // Push(at,val)
+			Sink:     w,
 		})
+
+		// Optional: visual spacing between setup blocks
+		if si < len(d.Setup)-1 {
+			parts = append(parts, b.Layout.Separator())
+		}
 	}
 
 	return b.Layout.VBox(parts...), bindings, nil
@@ -250,7 +312,44 @@ func (b *Builder) buildBarDiagram(jobID string, d *vp.Diagram) (uport.UIObject, 
 			MaxPoints:  0, // or set from somewhere else (global default)
 			Axis:       axisColor,
 			Background: backgroundColor,
+		}, s.Title, s.Description, b.MinChartWidth, b.MinChartHeight)
+
+		parts = append(parts, w)
+		bindings = append(bindings, BindingTarget{
+			JobID:    jobID,
+			Variable: s.Variable,
+			Sink:     w,
 		})
+	}
+
+	return b.Layout.VBox(parts...), bindings, nil
+}
+
+func (b *Builder) buildLineDiagram(jobID string, d *vp.Diagram) (uport.UIObject, []BindingTarget, error) {
+	var parts []uport.UIObject
+	var bindings []BindingTarget
+
+	for si := range d.Setup {
+		s := d.Setup[si]
+		opts := port.DefaultLineChartOptions()
+
+		if s.DiagramStyle != nil {
+			if bs, ok := s.DiagramStyle.(vp.LineStyle); ok {
+				lineColor := colornames.Map[bs.Line]
+				backgroundColor := colornames.Map[bs.Background]
+
+				opts.Line = lineColor
+				opts.Background = backgroundColor
+			}
+		}
+
+		w := b.Factory.NewLineChart(
+			opts,
+			s.Title,
+			s.Description,
+			800, 260, // initial raster (so it doesn’t start tiny/blurry)
+			b.MinChartWidth, b.MinChartHeight, // widget hint; layout will expand it
+		)
 
 		parts = append(parts, w)
 		bindings = append(bindings, BindingTarget{

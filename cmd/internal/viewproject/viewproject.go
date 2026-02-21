@@ -57,12 +57,14 @@ type DiagramType string
 const (
 	DiagramTypeBoolean DiagramType = "boolean"
 	DiagramTypeBar     DiagramType = "bar"
+	DiagramTypeLine    DiagramType = "line"
 )
 
 // SetupItem is one variable/series to visualize.
 type SetupItem struct {
 	Variable     string       `json:"variable"`
 	Title        string       `json:"title"`
+	Description  string       `json:"description"`
 	VariableType ValueType    `json:"variableType"`
 	WindowStyle  *WindowStyle `json:"windowStyle,omitempty"`
 
@@ -77,6 +79,7 @@ type ValueType string
 const (
 	ValueTypeBoolean ValueType = "boolean"
 	ValueTypeInteger ValueType = "integer"
+	Value
 )
 
 // --------------------
@@ -102,6 +105,13 @@ type BarStyle struct {
 }
 
 func (BarStyle) isStyle() {}
+
+type LineStyle struct {
+	Line       string `json:"line,omitempty"`
+	Background string `json:"background,omitempty"`
+}
+
+func (LineStyle) isStyle() {}
 
 // ============================================================
 // Loaders
@@ -247,6 +257,7 @@ func (d *Diagram) UnmarshalJSON(b []byte) error {
 		out := SetupItem{
 			Variable:     item.Variable,
 			Title:        item.Title,
+			Description:  item.Description,
 			VariableType: item.VariableType,
 			WindowStyle:  item.WindowStyle,
 		}
@@ -267,8 +278,10 @@ func (d *Diagram) UnmarshalJSON(b []byte) error {
 
 // Internal helper type for decoding setup items with raw diagramStyle.
 type setupItemRaw struct {
-	Variable     string          `json:"variable"`
-	Title        string          `json:"title"`
+	Variable    string `json:"variable"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+
 	VariableType ValueType       `json:"variableType"`
 	DiagramStyle json.RawMessage `json:"diagramStyle,omitempty"`
 	WindowStyle  *WindowStyle    `json:"windowStyle,omitempty"`
@@ -288,6 +301,13 @@ func parseStyleForDiagramType(t DiagramType, raw json.RawMessage) (Style, error)
 			return nil, err
 		}
 		return s, nil
+	case DiagramTypeLine:
+		var s LineStyle
+		if err := decodeStrict(raw, &s); err != nil {
+			return nil, err
+		}
+		return s, nil
+
 	default:
 		return nil, fmt.Errorf("unsupported diagram type %q", string(t))
 	}
@@ -330,7 +350,7 @@ func (d Diagram) Validate(diagramIndex int) error {
 		return fmt.Errorf("type is required")
 	}
 	switch d.Type {
-	case DiagramTypeBoolean, DiagramTypeBar:
+	case DiagramTypeBoolean, DiagramTypeBar, DiagramTypeLine:
 		// ok
 	default:
 		return fmt.Errorf("type unsupported: %q", d.Type)

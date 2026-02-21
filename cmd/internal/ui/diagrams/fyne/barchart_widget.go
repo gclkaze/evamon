@@ -10,11 +10,16 @@ import (
 
 type BarChartWidget struct {
 	widget.BaseWidget
-	drawer *BarChartDrawer
+	drawer      *BarChartDrawer
+	title       string
+	description string
+
+	minWidth  float32
+	minHeight float32
 }
 
-func NewBarChartWidget(drawer *BarChartDrawer) *BarChartWidget {
-	w := &BarChartWidget{drawer: drawer}
+func NewBarChartWidget(drawer *BarChartDrawer, title string, description string, width, height float32) *BarChartWidget {
+	w := &BarChartWidget{drawer: drawer, title: title, description: description, minWidth: width, minHeight: height}
 	w.ExtendBaseWidget(w)
 	return w
 }
@@ -22,6 +27,9 @@ func NewBarChartWidget(drawer *BarChartDrawer) *BarChartWidget {
 func (w *BarChartWidget) Push(at time.Time, val any) {
 	w.drawer.Push(at, val)
 }
+func (w *BarChartWidget) Title() string       { return w.title }
+func (w *BarChartWidget) Description() string { return w.description }
+
 func (w *BarChartWidget) Native() any { return w }
 func (w *BarChartWidget) CreateRenderer() fyne.WidgetRenderer {
 	root := w.drawer.Root()
@@ -47,7 +55,8 @@ func (r *barChartWidgetRenderer) Layout(size fyne.Size) {
 }
 
 func (r *barChartWidgetRenderer) MinSize() fyne.Size {
-	return fyne.NewSize(200, 120)
+	//400, 280
+	return fyne.NewSize(r.w.minWidth, r.w.minHeight)
 }
 
 func (r *barChartWidgetRenderer) Refresh() {

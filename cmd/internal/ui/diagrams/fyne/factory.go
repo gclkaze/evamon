@@ -35,7 +35,7 @@ func NewFactory() *Factory {
 		return NewBarChartDrawer(opts.MaxPoints, opts.Width, opts.Height, opts.Axis, opts.Background)
 	}
 */
-func (f *Factory) NewBoolFill(opts port.BoolFillOptions) port.DiagramWidget {
+func (f *Factory) NewBoolFill(opts port.BoolFillOptions, title string, description string, width, height float32) port.DiagramWidget {
 	trueC := opts.TrueColor
 	falseC := opts.FalseColor
 	if trueC == nil {
@@ -46,10 +46,15 @@ func (f *Factory) NewBoolFill(opts port.BoolFillOptions) port.DiagramWidget {
 	}
 
 	drawer := NewBoolFillDrawer(trueC, falseC)
-	return NewBoolFillWidget(drawer) // tiny wrapper to satisfy DiagramWidget
+	return NewBoolFillWidget(drawer, title, description, width, height) // tiny wrapper to satisfy DiagramWidget
 }
 
-func (f *Factory) NewBarChart(opts port.BarChartOptions) port.DiagramWidget {
+func (f *Factory) NewBarChart(opts port.BarChartOptions, title string, description string, width, height float32) port.DiagramWidget {
 	drawer := NewBarChartDrawer(opts.MaxPoints, opts.Width, opts.Height, opts.Axis, opts.Background)
-	return NewBarChartWidget(drawer) // the resize-aware wrapper
+	return NewBarChartWidget(drawer, title, description, width, height) // the resize-aware wrapper
+}
+
+func (f *Factory) NewLineChart(opts port.LineChartOptions, title string, description string, initialWidth, initialHeight, width, height float32) port.DiagramWidget {
+	drawer := NewLineChartDrawer(opts, initialWidth, initialHeight)
+	return NewLineChartWidget(drawer, title, description, width, height)
 }

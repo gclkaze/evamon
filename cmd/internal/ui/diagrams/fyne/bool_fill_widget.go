@@ -12,15 +12,23 @@ import (
 
 type BoolFillWidget struct {
 	widget.BaseWidget
-	drawer *BoolFillDrawer
+	drawer      *BoolFillDrawer
+	title       string
+	description string
+
+	minWidth  float32
+	minHeight float32
 }
 
-func NewBoolFillWidget(drawer *BoolFillDrawer) *BoolFillWidget {
-	w := &BoolFillWidget{drawer: drawer}
+func NewBoolFillWidget(drawer *BoolFillDrawer, title string, description string, width, height float32) *BoolFillWidget {
+	w := &BoolFillWidget{drawer: drawer, title: title, description: description, minWidth: width, minHeight: height}
 	w.ExtendBaseWidget(w)
 	return w
 }
-func (w *BoolFillWidget) Native() any { return w }
+func (w *BoolFillWidget) Native() any         { return w }
+func (w *BoolFillWidget) Title() string       { return w.title }
+func (w *BoolFillWidget) Description() string { return w.description }
+
 func (w *BoolFillWidget) CreateRenderer() fyne.WidgetRenderer {
 	root := w.drawer.Root()
 	return &boolFillWidgetRenderer{w: w, root: root, objs: []fyne.CanvasObject{root}}
@@ -46,7 +54,8 @@ func (r *boolFillWidgetRenderer) Layout(size fyne.Size) {
 }
 
 func (r *boolFillWidgetRenderer) MinSize() fyne.Size {
-	return fyne.NewSize(200, 120)
+	//200, 120
+	return fyne.NewSize(r.w.minWidth, r.w.minHeight)
 }
 
 func (r *boolFillWidgetRenderer) Refresh() {

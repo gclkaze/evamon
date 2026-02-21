@@ -31,13 +31,15 @@ type ProjectUIHolder struct {
 
 	vc *VariableContainer
 
-	mu          sync.RWMutex
-	unsubscribe map[string]map[draw.DiagramWidget]func()
+	mu             sync.RWMutex
+	unsubscribe    map[string]map[draw.DiagramWidget]func()
+	MinChartWidth  float32
+	MinChartHeight float32
 }
 
 func NewProjectUIHolder(vp *viewproject.ViewProject, renderer port.Renderer, drawerFactory draw.Factory, props *properties.Properties, vc *VariableContainer) *ProjectUIHolder {
 	//one window holder per view project
-	return &ProjectUIHolder{vp: vp, renderer: renderer, props: props, drawerFactory: drawerFactory, vc: vc, unsubscribe: make(map[string]map[draw.DiagramWidget]func())}
+	return &ProjectUIHolder{vp: vp, renderer: renderer, props: props, drawerFactory: drawerFactory, vc: vc, unsubscribe: make(map[string]map[draw.DiagramWidget]func()), MinChartWidth: 300, MinChartHeight: 300}
 }
 
 func (inst *ProjectUIHolder) SetOnClosed(close func()) {
@@ -196,7 +198,7 @@ func (inst *ProjectUIHolder) buildBooleanDiagram(setup viewproject.SetupItem) dr
 	boolFill := inst.drawerFactory.NewBoolFill(draw.BoolFillOptions{
 		TrueColor:  trueColor,
 		FalseColor: falseColor,
-	})
+	}, setup.Title, setup.Description, inst.MinChartWidth, inst.MinChartHeight)
 
 	inst.registerVariableDrawerUnsubscriber(setup.Variable, boolFill)
 	return boolFill
@@ -221,7 +223,7 @@ func (inst *ProjectUIHolder) buildBarchart(setup viewproject.SetupItem) draw.Dia
 		Height:     0,
 		Axis:       axisColor,
 		Background: backgroundColor,
-	})
+	}, setup.Title, setup.Description, inst.MinChartWidth, inst.MinChartHeight)
 
 	inst.registerVariableDrawerUnsubscriber(setup.Variable, barchart)
 	return barchart
@@ -235,6 +237,7 @@ func (inst *ProjectUIHolder) buildDiagramContent(setup viewproject.SetupItem) dr
 	case viewproject.ValueTypeInteger:
 		barChart := inst.buildBarchart(setup)
 		return barChart
+
 	}
 	return nil
 }

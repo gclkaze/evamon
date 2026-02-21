@@ -52,6 +52,7 @@ func (inst *DashboardUIHolder) Create(dp *viewproject.DashboardProject) error {
 	}
 
 	win.SetContent(res.Root)
+	win.Resize(1100, 700)
 	win.Show()
 
 	// Bindings: subscribe to sockets
