@@ -2,14 +2,11 @@ package dashboardbuilder
 
 import (
 	"fmt"
-	"image/color"
 	"strings"
-	"time"
 
+	window "github.com/gclkaze/evamon/cmd/internal/ui/chart"
 	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
-	"golang.org/x/image/colornames"
 
-	"github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 	dport "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 	vp "github.com/gclkaze/evamon/cmd/internal/viewproject"
 )
@@ -38,6 +35,8 @@ type Builder struct {
 
 	MinChartBooleanWidth  float32
 	MinChartBooleanHeight float32
+
+	DefaultMaxPoints int
 }
 
 func New(layout uport.Layout, factory dport.Factory) *Builder {
@@ -49,6 +48,8 @@ func New(layout uport.Layout, factory dport.Factory) *Builder {
 
 		MinChartBooleanWidth:  100,
 		MinChartBooleanHeight: 100,
+
+		DefaultMaxPoints: 1000,
 	}
 }
 
@@ -249,27 +250,10 @@ func (b *Builder) buildBooleanDiagram(jobID string, d *vp.Diagram) (uport.UIObje
 		if titleText != "" {
 			parts = append(parts, b.Layout.Title(titleText))
 		}
-
-		// Extract style if present
-		var trueColor, falseColor color.RGBA
-		if s.DiagramStyle != nil {
-			st, ok := s.DiagramStyle.(vp.BooleanStyle)
-			if !ok {
-				return nil, nil, fmt.Errorf("setup[%d]: diagramStyle is not BooleanStyle", si)
-			}
-			trueColor = colornames.Map[st.True]
-			falseColor = colornames.Map[st.False]
-		} else {
-			falseColor = colornames.Map["red"]
-			trueColor = colornames.Map["green"]
+		w, err := window.CreateBoolDrawer(b.Factory, &s, si, b.MinChartBooleanWidth, b.MinChartBooleanHeight)
+		if err != nil {
+			return nil, nil, err
 		}
-
-		// Build widget; since we render title outside, avoid duplicating it inside the widget
-		w := b.Factory.NewBoolFill(dport.BoolFillOptions{
-			TrueColor:  trueColor,
-			FalseColor: falseColor,
-		}, "", s.Description, b.MinChartBooleanWidth, b.MinChartBooleanHeight)
-
 		parts = append(parts, w)
 		bindings = append(bindings, BindingTarget{
 			JobID:    jobID,
@@ -293,27 +277,10 @@ func (b *Builder) buildBarDiagram(jobID string, d *vp.Diagram) (uport.UIObject, 
 	for si := range d.Setup {
 		s := d.Setup[si]
 
-		var axisColor, backgroundColor color.RGBA
-
-		if s.DiagramStyle != nil {
-			if bs, ok := s.DiagramStyle.(vp.BarStyle); ok {
-				axisColor = colornames.Map[bs.Axis]
-				backgroundColor = colornames.Map[bs.Background]
-			}
-		} else {
-			axisColor = colornames.Map["red"]
-			backgroundColor = colornames.Map["black"]
-
+		w, err := window.CreateBarchartDrawer(b.Factory, &s, si, b.MinChartWidth, b.MinChartHeight, b.DefaultMaxPoints)
+		if err != nil {
+			return nil, nil, err
 		}
-
-		w := b.Factory.NewBarChart(dport.BarChartOptions{
-			// If you have per-setup windowStyle, you can map it here too.
-			// Width/Height are typically 0 so layout controls the size.
-			MaxPoints:  0, // or set from somewhere else (global default)
-			Axis:       axisColor,
-			Background: backgroundColor,
-		}, s.Title, s.Description, b.MinChartWidth, b.MinChartHeight)
-
 		parts = append(parts, w)
 		bindings = append(bindings, BindingTarget{
 			JobID:    jobID,
@@ -331,25 +298,11 @@ func (b *Builder) buildLineDiagram(jobID string, d *vp.Diagram) (uport.UIObject,
 
 	for si := range d.Setup {
 		s := d.Setup[si]
-		opts := port.DefaultLineChartOptions()
 
-		if s.DiagramStyle != nil {
-			if bs, ok := s.DiagramStyle.(vp.LineStyle); ok {
-				lineColor := colornames.Map[bs.Line]
-				backgroundColor := colornames.Map[bs.Background]
-
-				opts.Line = lineColor
-				opts.Background = backgroundColor
-			}
+		w, err := window.CreateLinechartDrawer(b.Factory, &s, si, b.MinChartWidth, b.MinChartHeight, b.DefaultMaxPoints)
+		if err != nil {
+			return nil, nil, err
 		}
-
-		w := b.Factory.NewLineChart(
-			opts,
-			s.Title,
-			s.Description,
-			800, 260, // initial raster (so it doesn’t start tiny/blurry)
-			b.MinChartWidth, b.MinChartHeight, // widget hint; layout will expand it
-		)
 
 		parts = append(parts, w)
 		bindings = append(bindings, BindingTarget{
@@ -370,9 +323,4 @@ func defaultDiagramTitle(d *vp.Diagram) string {
 		return d.Setup[0].Title
 	}
 	return string(d.Type)
-}
-
-// (Optional) Useful if your binder wants to push "now" without parsing timestamps.
-func pushNow(w dport.EvaWidget, val any) {
-	w.Push(time.Now(), val)
 }

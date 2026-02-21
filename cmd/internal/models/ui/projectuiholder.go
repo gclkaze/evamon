@@ -2,15 +2,14 @@ package ui
 
 import (
 	"fmt"
-	"image/color"
 	"strconv"
 	"sync"
 
+	window "github.com/gclkaze/evamon/cmd/internal/ui/chart"
 	draw "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 	"github.com/gclkaze/evamon/cmd/internal/viewproject"
 	"github.com/magiconair/properties"
-	"golang.org/x/image/colornames"
 )
 
 type ProjectUIHolder struct {
@@ -38,7 +37,6 @@ type ProjectUIHolder struct {
 }
 
 func NewProjectUIHolder(vp *viewproject.ViewProject, renderer port.Renderer, drawerFactory draw.Factory, props *properties.Properties, vc *VariableContainer) *ProjectUIHolder {
-	//one window holder per view project
 	return &ProjectUIHolder{vp: vp, renderer: renderer, props: props, drawerFactory: drawerFactory, vc: vc, unsubscribe: make(map[string]map[draw.DiagramWidget]func()), MinChartWidth: 300, MinChartHeight: 300}
 }
 
@@ -116,7 +114,7 @@ func (inst *ProjectUIHolder) setupAndBuildDiagramsMultiTabed(diagram viewproject
 	if err != nil {
 		return nil, err
 	}
-	w = inst.styleWindow(w, width, height)
+	w = inst.styleWindow(w, width, height, nil, nil)
 
 	for j := range theSetupItems {
 		setup := theSetupItems[j]
@@ -124,7 +122,7 @@ func (inst *ProjectUIHolder) setupAndBuildDiagramsMultiTabed(diagram viewproject
 		tabID := strconv.Itoa(j)
 		w.UpsertTab(tabID, title)
 
-		content := inst.buildDiagramContent(setup)
+		content := window.BuildDiagramContent(inst, inst.drawerFactory, w, setup, inst.MinChartWidth, inst.MinChartHeight, inst.defaultMaxPoints)
 		w.AssignTab(tabID, content)
 		w.Show()
 	}
@@ -144,105 +142,16 @@ func (inst *ProjectUIHolder) setupAndBuildDiagrams(diagram viewproject.Diagram, 
 			return nil, err
 		}
 
-		if setup.WindowStyle != nil {
-			width = setup.WindowStyle.Width
-			height = setup.WindowStyle.Height
-		} else {
-			if windowStyle != nil {
-				width = windowStyle.Width
-				height = windowStyle.Height
-			}
-		}
-
-		w = inst.styleWindow(w, width, height)
-		w = inst.buildDiagram(w, setup)
+		w = inst.styleWindow(w, width, height, &setup, windowStyle)
+		w = window.BuildDiagram(inst, inst.drawerFactory, w, setup, inst.MinChartWidth, inst.MinChartHeight, inst.defaultMaxPoints)
 		w.Show()
 
 		ws = append(ws, w)
 	}
 	return ws, nil
 }
-func (inst *ProjectUIHolder) buildDiagram(w port.ExecutionWindow, setup viewproject.SetupItem) port.ExecutionWindow {
-	switch setup.VariableType {
-	case viewproject.ValueTypeBoolean:
 
-		boolFill := inst.buildBooleanDiagram(setup)
-
-		w.SetContent(boolFill)
-		w.SetResizable(true)
-
-	case viewproject.ValueTypeInteger:
-
-		barChart := inst.buildBarchart(setup)
-
-		w.SetContent(barChart)
-		w.SetResizable(true)
-	}
-	return w
-}
-
-func (inst *ProjectUIHolder) buildBooleanDiagram(setup viewproject.SetupItem) draw.DiagramWidget {
-	var falseColor color.RGBA
-	var trueColor color.RGBA
-	if setup.DiagramStyle != nil {
-		if bs, ok := setup.DiagramStyle.(viewproject.BooleanStyle); ok {
-			trueColor = colornames.Map[bs.True]
-			falseColor = colornames.Map[bs.False]
-		}
-	} else {
-		falseColor = colornames.Map["red"]
-		trueColor = colornames.Map["green"]
-
-	}
-
-	boolFill := inst.drawerFactory.NewBoolFill(draw.BoolFillOptions{
-		TrueColor:  trueColor,
-		FalseColor: falseColor,
-	}, setup.Title, setup.Description, inst.MinChartWidth, inst.MinChartHeight)
-
-	inst.registerVariableDrawerUnsubscriber(setup.Variable, boolFill)
-	return boolFill
-}
-
-func (inst *ProjectUIHolder) buildBarchart(setup viewproject.SetupItem) draw.DiagramWidget {
-	var axisColor color.RGBA
-	var backgroundColor color.RGBA
-	if setup.DiagramStyle != nil {
-		if bs, ok := setup.DiagramStyle.(viewproject.BarStyle); ok {
-			axisColor = colornames.Map[bs.Axis]
-			backgroundColor = colornames.Map[bs.Background]
-		}
-	} else {
-		axisColor = colornames.Map["red"]
-		backgroundColor = colornames.Map["green"]
-	}
-
-	barchart := inst.drawerFactory.NewBarChart(draw.BarChartOptions{
-		MaxPoints:  inst.defaultMaxPoints,
-		Width:      0,
-		Height:     0,
-		Axis:       axisColor,
-		Background: backgroundColor,
-	}, setup.Title, setup.Description, inst.MinChartWidth, inst.MinChartHeight)
-
-	inst.registerVariableDrawerUnsubscriber(setup.Variable, barchart)
-	return barchart
-}
-
-func (inst *ProjectUIHolder) buildDiagramContent(setup viewproject.SetupItem) draw.DiagramWidget {
-	switch setup.VariableType {
-	case viewproject.ValueTypeBoolean:
-		boolFill := inst.buildBooleanDiagram(setup)
-		return boolFill
-	case viewproject.ValueTypeInteger:
-		barChart := inst.buildBarchart(setup)
-		return barChart
-
-	}
-	return nil
-}
-
-func (inst *ProjectUIHolder) registerVariableDrawerUnsubscriber(variableName string /* drawer draw.Drawer*/, drawer draw.DiagramWidget) {
+func (inst *ProjectUIHolder) RegisterVariableDrawerUnsubscriber(variableName string, drawer draw.DiagramWidget) {
 	rem := inst.vc.Register(variableName, drawer)
 	inst.mu.Lock()
 	set := inst.unsubscribe[variableName]
@@ -256,7 +165,17 @@ func (inst *ProjectUIHolder) registerVariableDrawerUnsubscriber(variableName str
 	inst.mu.Unlock()
 }
 
-func (inst *ProjectUIHolder) styleWindow(window port.ExecutionWindow, w *float32, h *float32) port.ExecutionWindow {
+func (inst *ProjectUIHolder) styleWindow(window port.ExecutionWindow, w *float32, h *float32, setup *viewproject.SetupItem, windowStyle *viewproject.WindowStyle) port.ExecutionWindow {
+
+	if setup.WindowStyle != nil {
+		w = setup.WindowStyle.Width
+		h = setup.WindowStyle.Height
+	} else {
+		if windowStyle != nil {
+			w = windowStyle.Width
+			h = windowStyle.Height
+		}
+	}
 
 	if w != nil && h != nil {
 		window.Resize(float32(*w), float32(*h))
@@ -280,6 +199,5 @@ func (inst *ProjectUIHolder) loadDefaults() {
 	inst.defaultWidth = inst.props.GetFloat32("default_window_width", 400)
 	inst.defaultHeight = inst.props.GetFloat32("default_window_height", 400)
 	inst.defaultResizable = inst.props.GetBool("default_window_resizable", false)
-
 	inst.defaultMaxPoints = inst.props.GetInt("default_barchart_maxpoints", 1000)
 }

@@ -178,8 +178,7 @@ func (d *LineChartDrawer) Push(at time.Time, val any) {
 
 		d.values = append(d.values, v)
 		d.times = append(d.times, at)
-		fmt.Printf("unsupported val type: %T\n", val)
-		fmt.Printf("unsupported val type: %T\n", v)
+
 		if len(d.values) > d.opts.MaxPoints {
 			over := len(d.values) - d.opts.MaxPoints
 			d.values = d.values[over:]

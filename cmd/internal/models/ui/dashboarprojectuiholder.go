@@ -48,7 +48,7 @@ func (inst *DashboardUIHolder) Create(dp *viewproject.DashboardProject) error {
 
 	res, err := builder.BuildDashboard(dp)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	win.SetContent(res.Root)
@@ -68,38 +68,3 @@ func (inst *DashboardUIHolder) Create(dp *viewproject.DashboardProject) error {
 func (inst *DashboardUIHolder) Run() {
 	inst.renderer.Run()
 }
-
-/*
-
-type Router struct {
-	mu sync.RWMutex
-	m  map[string]map[string][]port.EvaWidget // jobID -> variable -> sinks
-}
-
-func NewRouter() *Router {
-	return &Router{m: make(map[string]map[string][]port.EvaWidget)}
-}
-
-func (r *Router) Register(jobID, variable string, sink port.EvaWidget) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	vm, ok := r.m[jobID]
-	if !ok {
-		vm = make(map[string][]port.EvaWidget)
-		r.m[jobID] = vm
-	}
-	vm[variable] = append(vm[variable], sink)
-}
-
-func (r *Router) Push(jobID, variable string, at time.Time, val any) {
-	r.mu.RLock()
-	sinks := r.m[jobID][variable]
-	r.mu.RUnlock()
-
-	for _, s := range sinks {
-		s.Push(at, val)
-	}
-}
-
-*/
