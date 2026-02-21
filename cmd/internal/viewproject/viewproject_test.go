@@ -31,6 +31,19 @@ func mustContain(t *testing.T, err error, substr string) {
 	}
 }
 
+func mustContainAny(t *testing.T, err error, substrs ...string) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("expected error containing one of %v, got nil", substrs)
+	}
+	for _, s := range substrs {
+		if strings.Contains(err.Error(), s) {
+			return
+		}
+	}
+	t.Fatalf("expected error containing one of %v, got: %v", substrs, err)
+}
+
 // --- tests: LoadViewProject (jobID + view) ---
 
 func TestLoadViewProject_OK_BooleanDiagram(t *testing.T) {
@@ -371,4 +384,337 @@ func TestLoadViewWindow_Fails_MissingSetupVariable(t *testing.T) {
 
 	_, err := viewproject.LoadViewWindow(viewPath)
 	mustContain(t, err, "variable is required")
+}
+func TestLoadViewProject_OK_BarDiagram_MultiVariableSetup(t *testing.T) {
+	tmp := t.TempDir()
+
+	projectPath := filepath.Join(tmp, "project.json")
+	projectJSON := `{
+	  "jobID": "job-123",
+	  "view": {
+	    "multiTab": false,
+	    "diagrams": [
+	      {
+	        "type": "bar",
+	        "setup": [
+	          {
+	            "variable": "theValue",
+	            "title": "My super important Value!",
+	            "variableType": "integer",
+	            "diagramStyle": { "background": "black" },
+	            "multiVariableSetup": [
+	              {
+	                "variable": "cpu",
+	                "title": "CPU Metrics",
+	                "variableType": "integer",
+	                "diagramStyle": { "bar": "dodgerblue" }
+	              },
+	              {
+	                "variable": "mem",
+	                "title": "Memory Metrics",
+	                "variableType": "integer",
+	                "diagramStyle": { "bar": "violet" }
+	              }
+	            ]
+	          }
+	        ]
+	      }
+	    ]
+	  }
+	}`
+	writeFile(t, projectPath, projectJSON)
+
+	vp, err := viewproject.LoadViewProject(projectPath)
+	if err != nil {
+		t.Fatalf("expected ok, got err: %v", err)
+	}
+
+	if len(vp.View.Diagrams) != 1 {
+		t.Fatalf("expected 1 diagram, got %d", len(vp.View.Diagrams))
+	}
+	if len(vp.View.Diagrams[0].Setup) != 1 {
+		t.Fatalf("expected 1 setup item, got %d", len(vp.View.Diagrams[0].Setup))
+	}
+
+	setup := vp.View.Diagrams[0].Setup[0]
+	if got := len(setup.MultiVariableSetup); got != 2 {
+		t.Fatalf("expected 2 children, got %d", got)
+	}
+
+	// Parent style should decode into BarStyle
+	if setup.DiagramStyle == nil {
+		t.Fatalf("expected parent DiagramStyle not nil")
+	}
+	if _, ok := setup.DiagramStyle.(viewproject.BarStyle); !ok {
+		t.Fatalf("expected parent BarStyle, got %T", setup.DiagramStyle)
+	}
+
+	// Child styles should decode into BarStyle as well
+	for i, child := range setup.MultiVariableSetup {
+		if child.DiagramStyle == nil {
+			t.Fatalf("expected child[%d] DiagramStyle not nil", i)
+		}
+		if _, ok := child.DiagramStyle.(viewproject.BarStyle); !ok {
+			t.Fatalf("expected child[%d] BarStyle, got %T", i, child.DiagramStyle)
+		}
+	}
+}
+
+func TestLoadViewProject_Fails_MultiVariableSetup_TooShort(t *testing.T) {
+	tmp := t.TempDir()
+
+	projectPath := filepath.Join(tmp, "project.json")
+	projectJSON := `{
+	  "jobID": "job-123",
+	  "view": {
+	    "multiTab": false,
+	    "diagrams": [
+	      {
+	        "type": "bar",
+	        "setup": [
+	          {
+	            "variable": "theValue",
+	            "title": "Bundle",
+	            "variableType": "integer",
+	            "diagramStyle": { "background": "black" },
+	            "multiVariableSetup": [
+	              {
+	                "variable": "cpu",
+	                "title": "CPU",
+	                "variableType": "integer",
+	                "diagramStyle": { "bar": "dodgerblue" }
+	              }
+	            ]
+	          }
+	        ]
+	      }
+	    ]
+	  }
+	}`
+	writeFile(t, projectPath, projectJSON)
+
+	_, err := viewproject.LoadViewProject(projectPath)
+	// Keep assertion fuzzy because your error message might be slightly different.
+	mustContain(t, err, "multiVariableSetup")
+	mustContain(t, err, "at least 2")
+}
+
+func TestLoadViewProject_Fails_MultiVariableSetup_ParentBackgroundMissing(t *testing.T) {
+	tmp := t.TempDir()
+
+	projectPath := filepath.Join(tmp, "project.json")
+	projectJSON := `{
+	  "jobID": "job-123",
+	  "view": {
+	    "multiTab": false,
+	    "diagrams": [
+	      {
+	        "type": "bar",
+	        "setup": [
+	          {
+	            "variable": "theValue",
+	            "title": "Bundle",
+	            "variableType": "integer",
+	            "diagramStyle": { "axis": "green" },
+	            "multiVariableSetup": [
+	              {
+	                "variable": "cpu",
+	                "title": "CPU",
+	                "variableType": "integer",
+	                "diagramStyle": { "bar": "dodgerblue" }
+	              },
+	              {
+	                "variable": "mem",
+	                "title": "MEM",
+	                "variableType": "integer",
+	                "diagramStyle": { "bar": "violet" }
+	              }
+	            ]
+	          }
+	        ]
+	      }
+	    ]
+	  }
+	}`
+	writeFile(t, projectPath, projectJSON)
+
+	_, err := viewproject.LoadViewProject(projectPath)
+	mustContain(t, err, "diagramStyle")
+	mustContain(t, err, "background")
+}
+
+func TestLoadViewProject_Fails_MultiVariableSetup_ChildBarMissing(t *testing.T) {
+	tmp := t.TempDir()
+
+	projectPath := filepath.Join(tmp, "project.json")
+	projectJSON := `{
+	  "jobID": "job-123",
+	  "view": {
+	    "multiTab": false,
+	    "diagrams": [
+	      {
+	        "type": "bar",
+	        "setup": [
+	          {
+	            "variable": "theValue",
+	            "title": "Bundle",
+	            "variableType": "integer",
+	            "diagramStyle": { "background": "black" },
+	            "multiVariableSetup": [
+	              {
+	                "variable": "cpu",
+	                "title": "CPU",
+	                "variableType": "integer",
+	                "diagramStyle": { }
+	              },
+	              {
+	                "variable": "mem",
+	                "title": "MEM",
+	                "variableType": "integer",
+	                "diagramStyle": { "bar": "violet" }
+	              }
+	            ]
+	          }
+	        ]
+	      }
+	    ]
+	  }
+	}`
+	writeFile(t, projectPath, projectJSON)
+
+	_, err := viewproject.LoadViewProject(projectPath)
+	mustContain(t, err, "multiVariableSetup")
+	mustContain(t, err, "diagramStyle")
+	mustContain(t, err, "bar")
+}
+
+func TestLoadViewProject_Fails_MultiVariableSetup_DuplicateChildVariable(t *testing.T) {
+	tmp := t.TempDir()
+
+	projectPath := filepath.Join(tmp, "project.json")
+	projectJSON := `{
+	  "jobID": "job-123",
+	  "view": {
+	    "multiTab": false,
+	    "diagrams": [
+	      {
+	        "type": "bar",
+	        "setup": [
+	          {
+	            "variable": "theValue",
+	            "title": "Bundle",
+	            "variableType": "integer",
+	            "diagramStyle": { "background": "black" },
+	            "multiVariableSetup": [
+	              {
+	                "variable": "cpu",
+	                "title": "CPU #1",
+	                "variableType": "integer",
+	                "diagramStyle": { "bar": "dodgerblue" }
+	              },
+	              {
+	                "variable": "cpu",
+	                "title": "CPU #2",
+	                "variableType": "integer",
+	                "diagramStyle": { "bar": "violet" }
+	              }
+	            ]
+	          }
+	        ]
+	      }
+	    ]
+	  }
+	}`
+	writeFile(t, projectPath, projectJSON)
+
+	_, err := viewproject.LoadViewProject(projectPath)
+	mustContain(t, err, "duplic")
+}
+
+func TestLoadViewProject_Fails_MultiVariableSetup_NotAllowedForBooleanDiagram(t *testing.T) {
+	tmp := t.TempDir()
+
+	projectPath := filepath.Join(tmp, "project.json")
+	projectJSON := `{
+	  "jobID": "job-123",
+	  "view": {
+	    "multiTab": false,
+	    "diagrams": [
+	      {
+	        "type": "boolean",
+	        "setup": [
+	          {
+	            "variable": "theValue",
+	            "title": "Bundle",
+	            "variableType": "boolean",
+	            "diagramStyle": { "true": "green", "false": "red" },
+	            "multiVariableSetup": [
+	              {
+	                "variable": "cpu",
+	                "title": "CPU",
+	                "variableType": "integer",
+	                "diagramStyle": { "bar": "dodgerblue" }
+	              },
+	              {
+	                "variable": "mem",
+	                "title": "MEM",
+	                "variableType": "integer",
+	                "diagramStyle": { "bar": "violet" }
+	              }
+	            ]
+	          }
+	        ]
+	      }
+	    ]
+	  }
+	}`
+	writeFile(t, projectPath, projectJSON)
+
+	_, err := viewproject.LoadViewProject(projectPath)
+	mustContain(t, err, "multiVariableSetup")
+	mustContainAny(t, err, "bar/line", "unknown field", "diagramStyle")
+}
+
+func TestLoadViewProject_Fails_MultiVariableSetup_UnknownField_StrictJSON(t *testing.T) {
+	tmp := t.TempDir()
+
+	projectPath := filepath.Join(tmp, "project.json")
+	projectJSON := `{
+	  "jobID": "job-123",
+	  "view": {
+	    "multiTab": false,
+	    "diagrams": [
+	      {
+	        "type": "bar",
+	        "setup": [
+	          {
+	            "variable": "theValue",
+	            "title": "Bundle",
+	            "variableType": "integer",
+	            "diagramStyle": { "background": "black" },
+	            "multiVariableSetup": [
+	              {
+	                "variable": "cpu",
+	                "title": "CPU",
+	                "variableType": "integer",
+	                "diagramStyle": { "bar": "dodgerblue" },
+	                "unknownField": 123
+	              },
+	              {
+	                "variable": "mem",
+	                "title": "MEM",
+	                "variableType": "integer",
+	                "diagramStyle": { "bar": "violet" }
+	              }
+	            ]
+	          }
+	        ]
+	      }
+	    ]
+	  }
+	}`
+	writeFile(t, projectPath, projectJSON)
+
+	_, err := viewproject.LoadViewProject(projectPath)
+	mustContain(t, err, "unknown field")
 }

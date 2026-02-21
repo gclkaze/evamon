@@ -72,6 +72,17 @@ type SetupItem struct {
 	// - for boolean diagrams: BooleanStyle
 	// - for bar diagrams:     BarStyle
 	DiagramStyle Style `json:"diagramStyle,omitempty"`
+
+	MultiVariableSetup []MultiSetupItem `json:"multiVariableSetup,omitempty"`
+}
+
+type MultiSetupItem struct {
+	Variable     string    `json:"variable"` // key inside bundle (cpu/mem/gpu)
+	Title        string    `json:"title"`
+	Description  string    `json:"description"`
+	VariableType ValueType `json:"variableType"`
+
+	DiagramStyle Style `json:"diagramStyle,omitempty"`
 }
 
 type ValueType string
@@ -79,7 +90,7 @@ type ValueType string
 const (
 	ValueTypeBoolean ValueType = "boolean"
 	ValueTypeInteger ValueType = "integer"
-	Value
+	ValueTypeFloat   ValueType = "float"
 )
 
 // --------------------
@@ -102,6 +113,8 @@ func (BooleanStyle) isStyle() {}
 type BarStyle struct {
 	Axis       string `json:"axis,omitempty"`
 	Background string `json:"background,omitempty"`
+
+	Bar string `json:"bar,omitempty"`
 }
 
 func (BarStyle) isStyle() {}
@@ -247,7 +260,6 @@ func (d *Diagram) UnmarshalJSON(b []byte) error {
 	d.Type = raw.Type
 	d.Setup = make([]SetupItem, 0, len(raw.Setup))
 
-	// Step 2: decode each setup item, interpreting diagramStyle based on d.Type
 	for i, itemRaw := range raw.Setup {
 		var item setupItemRaw
 		if err := decodeStrict(itemRaw, &item); err != nil {
@@ -262,12 +274,42 @@ func (d *Diagram) UnmarshalJSON(b []byte) error {
 			WindowStyle:  item.WindowStyle,
 		}
 
+		// Parse top-level diagramStyle (for single-variable diagrams OR “bundle-level” style)
 		if len(item.DiagramStyle) > 0 && string(item.DiagramStyle) != "null" {
 			style, err := parseStyleForDiagramType(raw.Type, item.DiagramStyle)
 			if err != nil {
 				return fmt.Errorf("diagram.setup[%d].diagramStyle: %w", i, err)
 			}
 			out.DiagramStyle = style
+		}
+
+		// NEW: parse multiVariableSetup entries (sub-series)
+		if len(item.MultiVariableSetup) > 0 {
+			out.MultiVariableSetup = make([]MultiSetupItem, 0, len(item.MultiVariableSetup))
+
+			for k, subRaw := range item.MultiVariableSetup {
+				var sub multiSetupItemRaw
+				if err := decodeStrict(subRaw, &sub); err != nil {
+					return fmt.Errorf("diagram.setup[%d].multiVariableSetup[%d]: %w", i, k, err)
+				}
+
+				subOut := MultiSetupItem{
+					Variable:     sub.Variable,
+					Title:        sub.Title,
+					Description:  sub.Description,
+					VariableType: sub.VariableType,
+				}
+
+				if len(sub.DiagramStyle) > 0 && string(sub.DiagramStyle) != "null" {
+					subStyle, err := parseStyleForDiagramType(raw.Type, sub.DiagramStyle)
+					if err != nil {
+						return fmt.Errorf("diagram.setup[%d].multiVariableSetup[%d].diagramStyle: %w", i, k, err)
+					}
+					subOut.DiagramStyle = subStyle
+				}
+
+				out.MultiVariableSetup = append(out.MultiVariableSetup, subOut)
+			}
 		}
 
 		d.Setup = append(d.Setup, out)
@@ -285,6 +327,17 @@ type setupItemRaw struct {
 	VariableType ValueType       `json:"variableType"`
 	DiagramStyle json.RawMessage `json:"diagramStyle,omitempty"`
 	WindowStyle  *WindowStyle    `json:"windowStyle,omitempty"`
+
+	MultiVariableSetup []json.RawMessage `json:"multiVariableSetup,omitempty"`
+}
+
+type multiSetupItemRaw struct {
+	Variable    string `json:"variable"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+
+	VariableType ValueType       `json:"variableType"`
+	DiagramStyle json.RawMessage `json:"diagramStyle,omitempty"`
 }
 
 func parseStyleForDiagramType(t DiagramType, raw json.RawMessage) (Style, error) {
@@ -395,16 +448,118 @@ func (d Diagram) Validate(diagramIndex int) error {
 				if _, ok := s.DiagramStyle.(BarStyle); !ok {
 					return fmt.Errorf("%s.diagramStyle must be bar style", prefix)
 				}
-				if s.VariableType != ValueTypeInteger {
-					return fmt.Errorf("%s.variableType must be %q for bar diagram", prefix, ValueTypeInteger)
+				if len(s.MultiVariableSetup) == 0 {
+					if s.VariableType != ValueTypeInteger {
+						return fmt.Errorf("%s.variableType must be %q for bar diagram", prefix, ValueTypeInteger)
+					}
 				}
 			}
+		}
+
+		err := d.ValidateMultiVariable(prefix, &s)
+		if err != nil {
+			return err
 		}
 	}
 
 	return nil
 }
 
+func (d Diagram) ValidateMultiVariable(prefix string, s *SetupItem) error {
+	// Only validate multi-variable rules if the config actually uses it.
+	if len(s.MultiVariableSetup) == 0 {
+		return nil
+	}
+
+	// Must have at least 2 series.
+	if len(s.MultiVariableSetup) < 2 {
+		return fmt.Errorf("%s.multiVariableSetup must have at least 2 items", prefix)
+	}
+
+	// Only allow multi-series for bar/line (as you already decided).
+	switch d.Type {
+	case DiagramTypeBar, DiagramTypeLine:
+		// ok
+	default:
+		return fmt.Errorf("%s.multiVariableSetup is only supported for bar/line diagrams", prefix)
+	}
+
+	// --- DiagramTypeBar: parent provides background; children provide bar color ---
+	if d.Type == DiagramTypeBar {
+		// Parent style must exist and be BarStyle so we can read background.
+		if s.DiagramStyle == nil {
+			return fmt.Errorf("%s.diagramStyle is required for multi-variable bar diagram", prefix)
+		}
+
+		parentStyle, ok := s.DiagramStyle.(BarStyle)
+		if !ok {
+			return fmt.Errorf("%s.diagramStyle must be bar style for multi-variable bar diagram", prefix)
+		}
+
+		if strings.TrimSpace(parentStyle.Background) == "" {
+			return fmt.Errorf("%s.diagramStyle.background is required for multi-variable bar diagram", prefix)
+		}
+
+		// Optional but recommended: forbid setting parentStyle.Bar to avoid ambiguity.
+		if strings.TrimSpace(parentStyle.Bar) != "" {
+			return fmt.Errorf("%s.diagramStyle.bar must not be set on the parent in multi-variable bar diagram (set it per child)", prefix)
+		}
+	}
+
+	// Validate children
+	seen := make(map[string]struct{}, len(s.MultiVariableSetup))
+	for k := range s.MultiVariableSetup {
+		ms := &s.MultiVariableSetup[k]
+		mp := fmt.Sprintf("%s.multiVariableSetup[%d]", prefix, k)
+
+		if strings.TrimSpace(ms.Variable) == "" {
+			return fmt.Errorf("%s.variable is required", mp)
+		}
+		if strings.TrimSpace(ms.Title) == "" {
+			return fmt.Errorf("%s.title is required", mp)
+		}
+		if ms.VariableType == "" {
+			return fmt.Errorf("%s.variableType is required", mp)
+		}
+
+		if _, dup := seen[ms.Variable]; dup {
+			return fmt.Errorf("%s.variable %q is duplicated", mp, ms.Variable)
+		}
+		seen[ms.Variable] = struct{}{}
+
+		switch d.Type {
+		case DiagramTypeBar:
+			// For multi-variable bar: each child MUST define bar color.
+			if ms.VariableType != ValueTypeInteger {
+				return fmt.Errorf("%s.variableType must be %q for bar diagram", mp, ValueTypeInteger)
+			}
+
+			if ms.DiagramStyle == nil {
+				return fmt.Errorf("%s.diagramStyle is required for multi-variable bar diagram", mp)
+			}
+
+			childStyle, ok := ms.DiagramStyle.(BarStyle)
+			if !ok {
+				return fmt.Errorf("%s.diagramStyle must be bar style", mp)
+			}
+
+			if strings.TrimSpace(childStyle.Bar) == "" {
+				return fmt.Errorf("%s.diagramStyle.bar is required for multi-variable bar diagram", mp)
+			}
+
+			// Optional: you can forbid child background/axis to keep responsibilities clean.
+			// if strings.TrimSpace(childStyle.Background) != "" || strings.TrimSpace(childStyle.Axis) != "" {
+			// 	return fmt.Errorf("%s.diagramStyle may only set \"bar\" for multi-variable bar diagram", mp)
+			// }
+
+		case DiagramTypeLine:
+			// If you later want multi-line, define your required style rules here.
+			// For now, you can keep it permissive or mirror your single-line rules.
+		}
+	}
+
+	return nil
+}
 func validateWindowStyle(path string, ws *WindowStyle) error {
 	if ws == nil {
 		return nil

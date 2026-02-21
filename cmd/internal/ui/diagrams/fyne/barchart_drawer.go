@@ -92,67 +92,6 @@ func (d *BarChartDrawer) Push(at time.Time, val any) {
 	})
 }
 
-func (d *BarChartDrawer) redraw() {
-	// Use the *actual* size allocated by the window/layout.
-	sz := d.root.Size()
-	w, h := sz.Width, sz.Height
-	if w <= 1 || h <= 1 {
-		// Not laid out yet; nothing meaningful to draw.
-		return
-	}
-
-	// Resize background to fill allocated area.
-	d.bg.Resize(fyne.NewSize(w, h))
-
-	// Clear bars but keep background.
-	d.root.Objects = d.root.Objects[:0]
-	d.root.Add(d.bg)
-
-	n := len(d.values)
-	if n == 0 {
-		d.root.Refresh()
-		return
-	}
-
-	maxV := 0
-	for _, v := range d.values {
-		if v > maxV {
-			maxV = v
-		}
-	}
-	if maxV <= 0 {
-		maxV = 1
-	}
-
-	padding := float32(8)
-	usableW := w - 2*padding
-	usableH := h - 2*padding
-	if usableW <= 1 || usableH <= 1 {
-		d.root.Refresh()
-		return
-	}
-
-	slotW := usableW / float32(n)
-	barW := float32(math.Max(float64(slotW-2), 2))
-
-	for i, v := range d.values {
-		bh := (float32(v) / float32(maxV)) * usableH
-		if bh < 1 {
-			bh = 1 // keep visible
-		}
-
-		x := padding + float32(i)*slotW
-		y := h - padding - bh
-
-		r := canvas.NewRectangle(d.barColor)
-		r.Move(fyne.NewPos(x, y))
-		r.Resize(fyne.NewSize(barW, bh))
-		d.root.Add(r)
-	}
-
-	d.root.Refresh()
-}
-
 func (d *BarChartDrawer) redrawWithAxis() {
 	sz := d.root.Size()
 	w, h := sz.Width, sz.Height
@@ -358,18 +297,6 @@ func (d *BarChartDrawer) redrawWithAxis() {
 		}
 	}
 	d.root.Refresh()
-}
-
-func formatInt(v int) string {
-	// keep this simple; customize if you want (e.g., 1.2k)
-	return fmt.Sprintf("%d", v)
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func niceNum(x float64, round bool) float64 {
