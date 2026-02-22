@@ -85,11 +85,9 @@ func CreateBarchartDrawer(drawerFactory draw.Factory, setup *viewproject.SetupIt
 	}
 
 	w := drawerFactory.NewBarChart(draw.BarChartOptions{
-		// If you have per-setup windowStyle, you can map it here too.
-		// Width/Height are typically 0 so layout controls the size.
 		Width:      0,
 		Height:     0,
-		MaxPoints:  maxPoints, // or set from somewhere else (global default)
+		MaxPoints:  maxPoints,
 		Axis:       axisColor,
 		Background: backgroundColor,
 	}, setup.Title, setup.Description, width, height)

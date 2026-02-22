@@ -261,7 +261,6 @@ func (b *Builder) buildBooleanDiagram(jobID string, d *vp.Diagram) (uport.UIObje
 			Sink:     w,
 		})
 
-		// Optional: visual spacing between setup blocks
 		if si < len(d.Setup)-1 {
 			parts = append(parts, b.Layout.Separator())
 		}
