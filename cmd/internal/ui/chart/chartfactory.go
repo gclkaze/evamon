@@ -84,12 +84,25 @@ func CreateBarchartDrawer(drawerFactory draw.Factory, setup *viewproject.SetupIt
 		backgroundColor = colornames.Map["black"]
 	}
 
+	var theColors []color.Color
+	if setup.MultiVariableSetup != nil {
+		for i := range setup.MultiVariableSetup {
+			current := setup.MultiVariableSetup[i]
+			theBar, ok := current.DiagramStyle.(viewproject.BarStyle)
+			if !ok {
+				continue
+			}
+			col := colornames.Map[theBar.Bar]
+			theColors = append(theColors, col)
+		}
+	}
 	w := drawerFactory.NewBarChart(draw.BarChartOptions{
 		Width:      0,
 		Height:     0,
 		MaxPoints:  maxPoints,
 		Axis:       axisColor,
 		Background: backgroundColor,
+		MultiColor: theColors,
 	}, setup.Title, setup.Description, width, height)
 	return w, nil
 }

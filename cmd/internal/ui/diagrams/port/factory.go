@@ -23,6 +23,8 @@ type BarChartOptions struct {
 	Height     float32
 	Axis       color.Color
 	Background color.Color
+
+	MultiColor []color.Color
 }
 
 // LineChartOptions controls rendering and scaling.

@@ -1,6 +1,7 @@
 package fynediagrams
 
 import (
+	"encoding/json"
 	"fmt"
 	"image/color"
 	"math"
@@ -19,19 +20,25 @@ type BarChartDrawer struct {
 
 	root *fyne.Container
 
-	values []int
+	//values []int
+
+	values [][]int
 	times  []time.Time
 
-	barColor color.Color
-	bgColor  color.Color
+	//barColor color.Color
+	barColor []color.Color
 
-	bg *canvas.Rectangle
+	bgColor color.Color
+
+	bg []*canvas.Rectangle
+
+	vars int
 }
 
 func (d *BarChartDrawer) Redraw() {
 	d.redrawWithAxis()
 }
-func NewBarChartDrawer(maxPoints int, width, height float32, barColor color.Color, bgColor color.Color) *BarChartDrawer {
+func NewBarChartDrawer(maxPoints int, width, height float32, barColor []color.Color, bgColor color.Color) *BarChartDrawer {
 	if maxPoints <= 0 {
 		maxPoints = 50
 	}
@@ -53,45 +60,181 @@ func NewBarChartDrawer(maxPoints int, width, height float32, barColor color.Colo
 	d.root = container.NewWithoutLayout()
 	d.root.Resize(fyne.NewSize(width, height))
 
-	d.bg = canvas.NewRectangle(d.bgColor)
-	//d.bg.Resize(fyne.NewSize(d.width, d.height))
-	d.bg.Move(fyne.NewPos(0, 0))
-	d.root.Add(d.bg)
+	/*	d.bg = canvas.NewRectangle(d.bgColor)
+		d.bg.Move(fyne.NewPos(0, 0))
+		d.root.Add(d.bg)
+	*/
+	d.vars = len(barColor)
+	if d.vars > 1 {
+		fmt.Print("LOL")
+	}
+	d.values = make([][]int, d.vars)
+	d.initRectangles(len(barColor))
 	return d
+}
+
+func (d *BarChartDrawer) initRectangles(l int) {
+	d.bg = make([]*canvas.Rectangle, 0)
+	for range l {
+		p := canvas.NewRectangle(d.bgColor)
+		d.bg = append(d.bg, p)
+		p.Move(fyne.NewPos(0, 0))
+		d.root.Add(p)
+	}
+}
+
+func (d *BarChartDrawer) addAllRects() {
+	for i := range d.bg {
+		d.root.Add(d.bg[i])
+	}
+}
+
+func (d *BarChartDrawer) resizeAllRects(w, h float32) {
+	for i := range d.bg {
+		d.bg[i].Resize(fyne.NewSize(w, h))
+	}
 }
 
 func (d *BarChartDrawer) Root() fyne.CanvasObject { return d.root }
 
 func (d *BarChartDrawer) Push(at time.Time, val any) {
+	if d.vars == 1 {
+		UI(func() {
+			v := 0
+			theVal := val
+			switch x := theVal.(type) {
+			case int:
+				v = x
+			case float64:
+				v = int(x)
+			case float32:
+				v = int(x)
+			default:
+				return
+			}
+
+			if v < 0 {
+				v = 0
+			}
+
+			d.values[0] = append(d.values[0], v)
+			d.times = append(d.times, at)
+
+			d.trim()
+
+			d.redrawWithAxis()
+
+		})
+		return
+	}
+	slice, ok := val.(string)
+	if !ok {
+		return
+	}
+	var nums []int
+	if err := json.Unmarshal([]byte(slice), &nums); err != nil {
+		return
+	}
+
 	UI(func() {
-		v := 0
-		switch x := val.(type) {
-		case int:
-			v = x
-		case float64:
-			v = int(x)
-		case float32:
-			v = int(x)
-		default:
+		if len(nums) != d.vars {
 			return
 		}
 
-		if v < 0 {
-			v = 0
-		}
-
-		d.values = append(d.values, v)
+		// append timestamp ONCE per group
 		d.times = append(d.times, at)
 
-		if len(d.values) > d.maxPoints {
-			d.values = d.values[len(d.values)-d.maxPoints:]
-			d.times = d.times[len(d.times)-d.maxPoints:]
+		// append one value per series
+		for j := 0; j < d.vars; j++ {
+			v := nums[j]
+			if v < 0 {
+				v = 0
+			}
+			d.values[j] = append(d.values[j], v)
 		}
 
+		d.trim()
 		d.redrawWithAxis()
 	})
 }
+func (d *BarChartDrawer) trim() {
+	points := len(d.times)
+	if points <= d.maxPoints {
+		return
+	}
 
+	start := points - d.maxPoints
+	d.times = d.times[start:]
+
+	for j := range d.values {
+		if len(d.values[j]) >= d.maxPoints {
+			d.values[j] = d.values[j][start:]
+		}
+	}
+}
+func (d *BarChartDrawer) getMaxValue() int {
+	maxV := 0
+	for i := range d.values {
+		for j := range d.values[i] {
+			if maxV < d.values[i][j] {
+				maxV = d.values[i][j]
+			}
+		}
+	}
+	return maxV
+}
+
+func (d *BarChartDrawer) drawRects(plotY1, plotH, plotX0, slotW float32, yMin, yMax float64) {
+	seriesCount := d.vars
+	if seriesCount == 0 {
+		return
+	}
+
+	// pointCount must be valid for *all* series
+	pointCount := d.pointCountSafe()
+	for j := 0; j < seriesCount; j++ {
+		if j >= len(d.values) { // extra safety if slices not initialized as expected
+			return
+		}
+		if len(d.values[j]) < pointCount {
+			pointCount = len(d.values[j])
+		}
+	}
+	if pointCount == 0 {
+		return
+	}
+
+	groupW := slotW
+	innerSlotW := groupW / float32(seriesCount)
+	barW := innerSlotW * 0.8
+
+	for i := 0; i < pointCount; i++ {
+		for j := 0; j < seriesCount; j++ {
+			// now safe: i < len(d.values[j]) and i < len(d.times)
+			val := float64(d.values[j][i])
+
+			frac := float32((val - yMin) / (yMax - yMin))
+			frac = clamp01(frac)
+
+			bh := frac * plotH
+			if bh < 1 {
+				bh = 1
+			}
+
+			x := plotX0 +
+				float32(i)*groupW +
+				float32(j)*innerSlotW +
+				(innerSlotW-barW)/2
+
+			y := plotY1 - bh
+
+			r := canvas.NewRectangle(d.barColor[j])
+			r.Move(fyne.NewPos(x, y))
+			r.Resize(fyne.NewSize(barW, bh))
+			d.root.Add(r)
+		}
+	}
+}
 func (d *BarChartDrawer) redrawWithAxis() {
 	sz := d.root.Size()
 	w, h := sz.Width, sz.Height
@@ -99,14 +242,16 @@ func (d *BarChartDrawer) redrawWithAxis() {
 		return
 	}
 
-	d.bg.Resize(fyne.NewSize(w, h))
+	//d.bg.Resize(fyne.NewSize(w, h))
+	d.resizeAllRects(w, h)
 
 	// Clear everything but keep background.
 	d.root.Objects = d.root.Objects[:0]
-	d.root.Add(d.bg)
+	//d.root.Add(d.bg)
+	d.addAllRects()
 
-	n := len(d.values)
-	if n == 0 {
+	pointCount := len(d.times)
+	if pointCount == 0 {
 		d.root.Refresh()
 		return
 	}
@@ -135,12 +280,12 @@ func (d *BarChartDrawer) redrawWithAxis() {
 	}
 
 	// ---- data range (with headroom) ----
-	maxV := 0
-	for _, v := range d.values {
+	maxV := d.getMaxValue() //0
+	/*	for _, v := range d.values {
 		if v > maxV {
 			maxV = v
 		}
-	}
+	}*/
 	if maxV <= 0 {
 		maxV = 1
 	}
@@ -197,36 +342,16 @@ func (d *BarChartDrawer) redrawWithAxis() {
 	}
 
 	// ---- bars ----
-	slotW := plotW / float32(n)
+	//	slotW := plotW / float32(pointCount)
+	slotW := plotW / float32(pointCount)
 
-	// Keep bars readable: max 80% slot width, min 2px.
-	barW := float32(math.Max(float64(slotW*0.80), 2))
-
-	for i, v := range d.values {
-		// map v -> y using nice yMax (not raw maxV)
-		val := float64(v)
-		frac := float32((val - yMin) / (yMax - yMin))
-		frac = clamp01(frac)
-
-		bh := frac * plotH
-		if bh < 1 {
-			bh = 1
-		}
-
-		x := plotX0 + float32(i)*slotW + (slotW-barW)/2
-		y := plotY1 - bh
-
-		r := canvas.NewRectangle(d.barColor)
-		r.Move(fyne.NewPos(x, y))
-		r.Resize(fyne.NewSize(barW, bh))
-		d.root.Add(r)
-	}
+	d.drawRects(plotY1, plotH, plotX0, slotW, yMin, yMax)
 
 	// ---- X labels (times) with overlap-aware density ----
 	// ---- X labels (times) with overlap-aware density ----
-	if len(d.times) == n && n > 0 {
+	if pointCount > 0 {
 		// Special-case: only one point -> one label, no division by (maxLabels-1)
-		if n == 1 {
+		if pointCount == 1 {
 			t := d.times[0]
 			lbl := canvas.NewText(t.Format("15:04:05"), labelColor)
 			lbl.TextSize = 11
@@ -261,19 +386,19 @@ func (d *BarChartDrawer) redrawWithAxis() {
 			if maxLabels > 6 {
 				maxLabels = 6
 			}
-			if maxLabels > n {
-				maxLabels = n
+			if maxLabels > pointCount {
+				maxLabels = pointCount
 			}
 			// here: n>=2 => maxLabels>=2 => denom >= 1
 			den := float64(maxLabels - 1)
 
 			for k := 0; k < maxLabels; k++ {
-				idx := int(math.Round(float64(k) * float64(n-1) / den))
+				idx := int(math.Round(float64(k) * float64(pointCount-1) / den))
 				if idx < 0 {
 					idx = 0
 				}
-				if idx > n-1 {
-					idx = n - 1
+				if idx > pointCount-1 {
+					idx = pointCount - 1
 				}
 
 				t := d.times[idx]
@@ -298,7 +423,21 @@ func (d *BarChartDrawer) redrawWithAxis() {
 	}
 	d.root.Refresh()
 }
-
+func (d *BarChartDrawer) pointCountSafe() int {
+	pc := len(d.times)
+	for j := 0; j < d.vars; j++ {
+		if j >= len(d.values) {
+			return 0
+		}
+		if len(d.values[j]) < pc {
+			pc = len(d.values[j])
+		}
+	}
+	if pc < 0 {
+		return 0
+	}
+	return pc
+}
 func niceNum(x float64, round bool) float64 {
 	// “Nice numbers” for ticks: 1, 2, 5, 10 * 10^n
 	if x <= 0 {
