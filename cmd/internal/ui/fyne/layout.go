@@ -1,9 +1,14 @@
+// ===============================
+// FILE: cmd/internal/ui/fynerenderer/layout.go
+// ===============================
 package fynerenderer
 
 import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	fynelayout "fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
+
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
@@ -39,7 +44,6 @@ func (Layout) VBox(children ...port.UIObject) port.UIObject {
 	for _, c := range children {
 		objs = append(objs, unwrap(c))
 	}
-
 	return wrap(container.NewVBox(objs...))
 }
 
@@ -74,4 +78,29 @@ func (Layout) Tabs(items ...port.TabItem) port.UIObject {
 		tabs.Append(ti)
 	}
 	return wrap(tabs)
+}
+
+// ----------------------
+// NEW: HBox + Spacer
+// ----------------------
+
+func (Layout) HBox(children ...port.UIObject) port.UIObject {
+	objs := make([]fyne.CanvasObject, 0, len(children))
+	for _, c := range children {
+		objs = append(objs, unwrap(c))
+	}
+	return wrap(container.NewHBox(objs...))
+}
+
+func (Layout) Spacer() port.UIObject {
+	return wrap(fynelayout.NewSpacer())
+}
+
+// ----------------------
+// NEW: DiagramLegend
+// ----------------------
+
+func (Layout) DiagramLegend(items []port.LegendItem, onClick func(key string)) port.UIObject {
+	obj := newDiagramLegend(items, 6, onClick) // 6 items per row (tweak)
+	return wrap(obj)
 }

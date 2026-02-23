@@ -1,11 +1,20 @@
+// ===============================
 package port
 
-// UIObject is an opaque UI node.
-// Concrete renderers (fyne, web, etc.) wrap their native objects behind this.
 type UIObject interface {
 	Native() any
 	Title() string
 	Description() string
+}
+
+type TabItem interface {
+	Native() any
+}
+
+type LegendItem struct {
+	Key   string // stable id (e.g. "cpu")
+	Label string // display label (e.g. "CPU Metrics")
+	Color string // e.g. "dodgerblue" or "#1e90ff"
 }
 
 // Layout builds UI containers (VBox, Grid, Tabs, etc.) without exposing toolkit details.
@@ -24,8 +33,12 @@ type Layout interface {
 	Separator() UIObject
 
 	VScroll(content UIObject) UIObject
-}
 
-type TabItem interface {
-	Native() any
+	// NEW primitives
+	HBox(children ...UIObject) UIObject
+	Spacer() UIObject
+
+	// NEW: legend for multi-variable diagrams.
+	// If onClick is nil => non-interactive.
+	DiagramLegend(items []LegendItem, onClick func(key string)) UIObject
 }

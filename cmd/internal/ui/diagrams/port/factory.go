@@ -31,6 +31,7 @@ type BarChartOptions struct {
 type VariableStyle struct {
 	VariableName string
 	VarColor     color.Color
+	VarColorText string
 }
 
 // LineChartOptions controls rendering and scaling.
