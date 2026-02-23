@@ -1,6 +1,7 @@
 package fynediagrams
 
 import (
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
@@ -15,7 +16,15 @@ import (
 	port "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 )
 
-// LineChartDrawer draws points into a Raster and overlays axis labels.
+// LineChartDrawer draws multi-series points into a Raster and overlays axis labels.
+// Multi-series behavior matches your BarChartDrawer:
+//   - vars == 1: Push accepts int/float values
+//   - vars > 1: Push expects a JSON array string (e.g. "[1,2,3]") and unmarshals to []int
+//
+// X-axis labels:
+//   - Always shows first and last timestamps (properly aligned).
+//   - Adds intermediate tick labels (2..maxXTicks, overlap-aware) with reused objects.
+//   - Uses cached sample label width (no per-refresh allocations for measurement).
 type LineChartDrawer struct {
 	mu sync.Mutex
 
@@ -27,8 +36,9 @@ type LineChartDrawer struct {
 	raster *canvas.Raster
 
 	// Data
-	values []int
+	values [][]int
 	times  []time.Time
+	vars   int
 
 	// Cached scale
 	minV int
@@ -39,6 +49,16 @@ type LineChartDrawer struct {
 	yMaxT *canvas.Text
 	xMinT *canvas.Text
 	xMaxT *canvas.Text
+
+	// Intermediate X tick labels + tick lines (reused)
+	xTicks     []*canvas.Text
+	xTickLines []*canvas.Line
+	maxXTicks  int // inclusive count (including endpoints) used for density calculation; we render maxXTicks-2 mid labels max.
+
+	// Cached label measurement for overlap-aware density
+	xLabelTextSize float32
+	xLabelSampleW  float32
+	xLabelCacheOK  bool
 
 	// Last known size
 	size fyne.Size
@@ -67,9 +87,17 @@ func NewLineChartDrawer(opts port.LineChartOptions, initialWidth, initialHeight 
 	}
 
 	d := &LineChartDrawer{
-		opts: opts,
-		size: fyne.NewSize(initialWidth, initialHeight),
+		opts:           opts,
+		size:           fyne.NewSize(initialWidth, initialHeight),
+		xLabelTextSize: 10, // keep consistent with your existing label sizes
+		maxXTicks:      6,  // density cap (similar to bar chart)
 	}
+
+	d.vars = len(opts.Variables)
+	if d.vars <= 0 {
+		d.vars = 1
+	}
+	d.values = make([][]int, d.vars)
 
 	// Single raster strategy: generator returns d.img.
 	d.raster = canvas.NewRaster(func(w, h int) image.Image {
@@ -95,13 +123,36 @@ func NewLineChartDrawer(opts port.LineChartOptions, initialWidth, initialHeight 
 	d.xMinT = canvas.NewText("", opts.Axis)
 	d.xMaxT = canvas.NewText("", opts.Axis)
 
-	d.yMinT.TextSize = 10
-	d.yMaxT.TextSize = 10
-	d.xMinT.TextSize = 10
-	d.xMaxT.TextSize = 10
+	d.yMinT.TextSize = d.xLabelTextSize
+	d.yMaxT.TextSize = d.xLabelTextSize
+	d.xMinT.TextSize = d.xLabelTextSize
+	d.xMaxT.TextSize = d.xLabelTextSize
 
-	// Root with absolute positioning
-	d.root = container.NewWithoutLayout(d.raster, d.yMinT, d.yMaxT, d.xMinT, d.xMaxT)
+	d.yMinT.Alignment = fyne.TextAlignLeading
+	d.yMaxT.Alignment = fyne.TextAlignLeading
+	d.xMinT.Alignment = fyne.TextAlignLeading
+	d.xMaxT.Alignment = fyne.TextAlignLeading
+
+	// Precreate intermediate tick labels + lines (reused)
+	for i := 0; i < d.maxXTicks; i++ {
+		t := canvas.NewText("", opts.Axis)
+		t.TextSize = d.xLabelTextSize
+		t.Alignment = fyne.TextAlignCenter
+		t.Hide()
+		d.xTicks = append(d.xTicks, t)
+
+		ln := canvas.NewLine(opts.Axis)
+		ln.StrokeWidth = 1
+		ln.Hide()
+		d.xTickLines = append(d.xTickLines, ln)
+	}
+
+	// Root with absolute positioning (include tick objects)
+	objects := []fyne.CanvasObject{d.raster, d.yMinT, d.yMaxT, d.xMinT, d.xMaxT}
+	for i := 0; i < d.maxXTicks; i++ {
+		objects = append(objects, d.xTickLines[i], d.xTicks[i])
+	}
+	d.root = container.NewWithoutLayout(objects...)
 	d.root.Resize(d.size)
 
 	d.raster.Move(fyne.NewPos(0, 0))
@@ -112,8 +163,14 @@ func NewLineChartDrawer(opts port.LineChartOptions, initialWidth, initialHeight 
 
 	return d
 }
-func (d *LineChartDrawer) Object() fyne.CanvasObject {
-	return d.root
+
+func (d *LineChartDrawer) Object() fyne.CanvasObject { return d.root }
+
+// InvalidateLabelCache should be called when font metrics affecting label width change,
+// e.g. if you change d.xLabelTextSize or app theme/font.
+func (d *LineChartDrawer) InvalidateLabelCache() {
+	d.xLabelCacheOK = false
+	d.xLabelSampleW = 0
 }
 
 func (d *LineChartDrawer) Resize(width, height float32) {
@@ -142,20 +199,59 @@ func (d *LineChartDrawer) SetOptions(opts port.LineChartOptions) {
 	if opts.YPadRatio < 0 {
 		opts.YPadRatio = d.opts.YPadRatio
 	}
+	if opts.GridX < 0 {
+		opts.GridX = 0
+	}
+	if opts.GridY < 0 {
+		opts.GridY = 0
+	}
+
+	// Handle vars change
+	newVars := len(opts.Variables)
+	if newVars <= 0 {
+		newVars = 1
+	}
+	if newVars != d.vars {
+		// simplest/safest: reset data when series structure changes
+		d.vars = newVars
+		d.values = make([][]int, d.vars)
+		d.times = nil
+	}
+
+	// If axis color changes, update label colors now (text objects are reused)
 	d.opts = opts
 
+	// Label measurement could change under theme/font; safest is to invalidate
+	// if you mutate text size elsewhere; axis color doesn't change width though.
+	// d.InvalidateLabelCache()
+
 	// Trim if needed
-	if len(d.values) > d.opts.MaxPoints {
-		over := len(d.values) - d.opts.MaxPoints
-		d.values = d.values[over:]
-		d.times = d.times[over:]
-	}
+	d.trimLocked()
 
 	d.refreshLocked()
 }
 
 // Push adds a point and redraws.
+// - If vars == 1: accepts int/float
+// - If vars > 1: expects a JSON array string "[1,2,3]"
 func (d *LineChartDrawer) Push(at time.Time, val any) {
+	if d.vars == 1 {
+		d.handleMonoVariableInput(at, val)
+		return
+	}
+
+	s, ok := val.(string)
+	if !ok {
+		return
+	}
+	var nums []int
+	if err := json.Unmarshal([]byte(s), &nums); err != nil {
+		return
+	}
+	d.handleMultiVariableInput(at, &nums)
+}
+
+func (d *LineChartDrawer) handleMonoVariableInput(at time.Time, val any) {
 	UI(func() {
 		v := 0
 		switch x := val.(type) {
@@ -176,18 +272,104 @@ func (d *LineChartDrawer) Push(at time.Time, val any) {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 
-		d.values = append(d.values, v)
+		d.values[0] = append(d.values[0], v)
 		d.times = append(d.times, at)
 
-		if len(d.values) > d.opts.MaxPoints {
-			over := len(d.values) - d.opts.MaxPoints
-			d.values = d.values[over:]
-			d.times = d.times[over:]
-		}
-
+		d.trimLocked()
 		d.refreshLocked()
 	})
+}
 
+func (d *LineChartDrawer) handleMultiVariableInput(at time.Time, nums *[]int) {
+	UI(func() {
+		if len(*nums) != d.vars {
+			return
+		}
+
+		d.mu.Lock()
+		defer d.mu.Unlock()
+
+		// append timestamp ONCE per group
+		d.times = append(d.times, at)
+
+		// append one value per series
+		for j := 0; j < d.vars; j++ {
+			v := (*nums)[j]
+			if v < 0 {
+				v = 0
+			}
+			d.values[j] = append(d.values[j], v)
+		}
+
+		d.trimLocked()
+		d.refreshLocked()
+	})
+}
+
+func (d *LineChartDrawer) trimLocked() {
+	points := len(d.times)
+	if points <= d.opts.MaxPoints {
+		return
+	}
+
+	start := points - d.opts.MaxPoints
+	d.times = d.times[start:]
+
+	for j := range d.values {
+		// normal case: each series has same length as times
+		if len(d.values[j]) >= points {
+			d.values[j] = d.values[j][start:]
+			continue
+		}
+		// fallback safety
+		if len(d.values[j]) > d.opts.MaxPoints {
+			over := len(d.values[j]) - d.opts.MaxPoints
+			d.values[j] = d.values[j][over:]
+		}
+	}
+}
+
+func (d *LineChartDrawer) pointCountSafeLocked() int {
+	pc := len(d.times)
+	for j := 0; j < d.vars; j++ {
+		if j >= len(d.values) {
+			return 0
+		}
+		if len(d.values[j]) < pc {
+			pc = len(d.values[j])
+		}
+	}
+	if pc < 0 {
+		return 0
+	}
+	return pc
+}
+
+func (d *LineChartDrawer) seriesColor(j int) color.Color {
+	if j >= 0 && j < len(d.opts.Variables) && d.opts.Variables[j].VarColor != nil {
+		return d.opts.Variables[j].VarColor
+	}
+	// fallback
+	return d.opts.Axis
+}
+
+func (d *LineChartDrawer) sampleTimeLabelWidthLocked() float32 {
+	if d.xLabelCacheOK && d.xLabelSampleW > 0 {
+		return d.xLabelSampleW
+	}
+
+	sample := canvas.NewText("88:88:88", d.opts.Axis)
+	sample.TextSize = d.xLabelTextSize
+	sample.Alignment = fyne.TextAlignCenter
+	sample.Refresh()
+
+	d.xLabelSampleW = sample.MinSize().Width
+	d.xLabelCacheOK = true
+
+	if d.xLabelSampleW <= 0 {
+		d.xLabelSampleW = 50
+	}
+	return d.xLabelSampleW
 }
 
 func (d *LineChartDrawer) refreshLocked() {
@@ -225,37 +407,61 @@ func (d *LineChartDrawer) refreshLocked() {
 		drawAxes(d.img, plotX0, plotY0, plotW, plotH, d.opts.Axis, d.opts.AxisStroke)
 	}
 
-	// Scale data
+	// -----------------------
+	// Scale data across ALL series
+	// -----------------------
+	n := d.pointCountSafeLocked()
+
 	minV, maxV := 0, 0
-	n := len(d.values)
-
 	if n > 0 {
-		minV, maxV = d.values[0], d.values[0]
-		for i := 1; i < n; i++ {
-			if d.values[i] < minV {
-				minV = d.values[i]
+		firstSet := false
+		for j := 0; j < d.vars && !firstSet; j++ {
+			if j < len(d.values) && len(d.values[j]) >= n && n > 0 {
+				minV, maxV = d.values[j][0], d.values[j][0]
+				firstSet = true
 			}
-			if d.values[i] > maxV {
-				maxV = d.values[i]
-			}
-		}
-		if minV == maxV {
-			minV--
-			maxV++
 		}
 
-		span := float64(maxV - minV)
-		pad := int(math.Ceil(span * d.opts.YPadRatio))
-		if pad < 1 {
-			pad = 1
+		if firstSet {
+			for j := 0; j < d.vars; j++ {
+				if j >= len(d.values) {
+					break
+				}
+				series := d.values[j]
+				if len(series) < n {
+					continue
+				}
+				for i := 0; i < n; i++ {
+					v := series[i]
+					if v < minV {
+						minV = v
+					}
+					if v > maxV {
+						maxV = v
+					}
+				}
+			}
+
+			if minV == maxV {
+				minV--
+				maxV++
+			}
+
+			span := float64(maxV - minV)
+			pad := int(math.Ceil(span * d.opts.YPadRatio))
+			if pad < 1 {
+				pad = 1
+			}
+			minV -= pad
+			maxV += pad
 		}
-		minV -= pad
-		maxV += pad
 	}
 
 	d.minV, d.maxV = minV, maxV
 
-	// Plot mapping
+	// -----------------------
+	// Plot mapping (shared X across series)
+	// -----------------------
 	toX := func(i int) float32 {
 		if n <= 1 {
 			return plotX0 + plotW/2
@@ -270,21 +476,47 @@ func (d *LineChartDrawer) refreshLocked() {
 		return plotY0 + (1-float32(t))*plotH
 	}
 
-	// Draw line
+	// -----------------------
+	// Draw lines (one per series)
+	// -----------------------
 	if n >= 2 {
-		for i := 0; i < n-1; i++ {
-			drawLineAA(d.img,
-				toX(i), toY(d.values[i]),
-				toX(i+1), toY(d.values[i+1]),
-				d.opts.Line, d.opts.LineStroke,
-			)
+		for j := 0; j < d.vars; j++ {
+			if j >= len(d.values) {
+				break
+			}
+			series := d.values[j]
+			if len(series) < n {
+				continue
+			}
+			c := d.seriesColor(j)
+
+			for i := 0; i < n-1; i++ {
+				drawLineAA(d.img,
+					toX(i), toY(series[i]),
+					toX(i+1), toY(series[i+1]),
+					c, d.opts.LineStroke,
+				)
+			}
 		}
 	}
 
-	// Draw markers
+	// -----------------------
+	// Draw markers (series-colored)
+	// -----------------------
 	if d.opts.ShowMarkers && n > 0 {
-		for i := 0; i < n; i++ {
-			drawCircleAA(d.img, toX(i), toY(d.values[i]), d.opts.MarkerRadius, d.opts.Marker)
+		for j := 0; j < d.vars; j++ {
+			if j >= len(d.values) {
+				break
+			}
+			series := d.values[j]
+			if len(series) < n {
+				continue
+			}
+			c := d.seriesColor(j)
+
+			for i := 0; i < n; i++ {
+				drawCircleAA(d.img, toX(i), toY(series[i]), d.opts.MarkerRadius, c)
+			}
 		}
 	}
 
@@ -299,8 +531,13 @@ func (d *LineChartDrawer) refreshLocked() {
 		d.yMaxT.Hide()
 		d.xMinT.Hide()
 		d.xMaxT.Hide()
+		for i := range d.xTicks {
+			d.xTicks[i].Hide()
+			d.xTickLines[i].Hide()
+		}
 	}
 }
+
 func (d *LineChartDrawer) setLabelsLocked(plotX0, plotY0, plotW, plotH float32) {
 	d.yMinT.Show()
 	d.yMaxT.Show()
@@ -321,26 +558,161 @@ func (d *LineChartDrawer) setLabelsLocked(plotX0, plotY0, plotW, plotH float32) 
 	d.yMaxT.Refresh()
 	d.yMinT.Refresh()
 
-	// X labels use time range
+	n := d.pointCountSafeLocked()
+	d.updateXTickLabelsLocked(plotX0, plotY0, plotW, plotH, n)
+}
+
+func (d *LineChartDrawer) updateXTickLabelsLocked(plotX0, plotY0, plotW, plotH float32, n int) {
+	// Hide all intermediate ticks by default
+	for i := range d.xTicks {
+		d.xTicks[i].Hide()
+		d.xTickLines[i].Hide()
+	}
+
+	if n <= 0 || len(d.times) == 0 {
+		d.xMinT.Text, d.xMaxT.Text = "", ""
+		d.xMinT.Refresh()
+		d.xMaxT.Refresh()
+		return
+	}
+
 	format := func(t time.Time) string {
 		if t.IsZero() {
 			return ""
 		}
 		return t.Format("15:04:05")
 	}
-	if len(d.times) > 0 {
-		d.xMinT.Text = format(d.times[0])
-		d.xMaxT.Text = format(d.times[len(d.times)-1])
-	} else {
-		d.xMinT.Text = ""
-		d.xMaxT.Text = ""
-	}
 
-	d.xMinT.Move(fyne.NewPos(plotX0, plotY0+plotH+6))
-	// crude right align
-	d.xMaxT.Move(fyne.NewPos(plotX0+plotW-70, plotY0+plotH+6))
+	labelY := plotY0 + plotH + 6
+	axisY := plotY0 + plotH
+
+	// Endpoints
+	leftT := format(d.times[0])
+	rightT := format(d.times[len(d.times)-1])
+
+	d.xMinT.Text = leftT
+	d.xMaxT.Text = rightT
+
+	d.xMinT.TextSize = d.xLabelTextSize
+	d.xMaxT.TextSize = d.xLabelTextSize
+
 	d.xMinT.Refresh()
 	d.xMaxT.Refresh()
+
+	// Proper alignment:
+	// Left label at plotX0; Right label right-aligned to plotX0+plotW
+	leftSz := d.xMinT.MinSize()
+	rightSz := d.xMaxT.MinSize()
+
+	d.xMinT.Move(fyne.NewPos(plotX0, labelY))
+	d.xMaxT.Move(fyne.NewPos(plotX0+plotW-rightSz.Width, labelY))
+
+	// Optional: endpoint tick marks on axis
+	// (If you don't want them, comment out)
+	// We reuse the first two xTickLines for endpoints only when n>1
+	if n > 1 && len(d.xTickLines) >= 2 {
+		// left endpoint tick at x0
+		ln0 := d.xTickLines[0]
+		ln0.StrokeColor = d.opts.Axis
+		ln0.Position1 = fyne.NewPos(plotX0, axisY)
+		ln0.Position2 = fyne.NewPos(plotX0, axisY+4)
+		ln0.Show()
+
+		// right endpoint tick at x1
+		ln1 := d.xTickLines[1]
+		ln1.StrokeColor = d.opts.Axis
+		ln1.Position1 = fyne.NewPos(plotX0+plotW, axisY)
+		ln1.Position2 = fyne.NewPos(plotX0+plotW, axisY+4)
+		ln1.Show()
+	}
+
+	_ = leftSz // not used beyond this point; kept if you later want collision checks
+
+	// No intermediate ticks when only one point
+	if n == 1 {
+		return
+	}
+
+	// Density estimation like bar chart
+	sampleW := d.sampleTimeLabelWidthLocked()
+	minSpacing := sampleW + 8
+	maxLabels := int(plotW / minSpacing)
+
+	if maxLabels < 2 {
+		maxLabels = 2
+	}
+	if maxLabels > d.maxXTicks {
+		maxLabels = d.maxXTicks
+	}
+	if maxLabels > n {
+		maxLabels = n
+	}
+
+	// We count endpoints as labels, so intermediate count is maxLabels-2
+	wantMid := maxLabels - 2
+	if wantMid <= 0 {
+		return
+	}
+
+	den := float64(maxLabels - 1) // safe because maxLabels>=2
+	midUsed := 0
+
+	// Use remaining slots for mid ticks.
+	// IMPORTANT: Because we used xTickLines[0],[1] optionally for endpoints,
+	// we start mid tick lines at index 2.
+	lineBase := 2
+	if len(d.xTickLines) < lineBase+wantMid {
+		// if not enough, reduce
+		can := len(d.xTickLines) - lineBase
+		if can < 0 {
+			can = 0
+		}
+		if wantMid > can {
+			wantMid = can
+		}
+	}
+	if wantMid <= 0 {
+		return
+	}
+
+	for k := 1; k < maxLabels-1; k++ {
+		idx := int(math.Round(float64(k) * float64(n-1) / den))
+		if idx < 0 {
+			idx = 0
+		}
+		if idx > n-1 {
+			idx = n - 1
+		}
+
+		cx := plotX0 + (float32(idx)/float32(n-1))*plotW
+
+		// label object
+		tlbl := d.xTicks[midUsed]
+		tlbl.Color = d.opts.Axis
+		tlbl.Text = format(d.times[idx])
+		tlbl.TextSize = d.xLabelTextSize
+		tlbl.Alignment = fyne.TextAlignCenter
+		tlbl.Refresh()
+
+		ls := tlbl.MinSize()
+		tlbl.Move(fyne.NewPos(cx-ls.Width/2, labelY))
+		tlbl.Show()
+
+		// tick line object
+		ln := d.xTickLines[lineBase+midUsed]
+		ln.StrokeColor = d.opts.Axis
+		ln.Position1 = fyne.NewPos(cx, axisY)
+		ln.Position2 = fyne.NewPos(cx, axisY+4)
+		ln.Show()
+
+		midUsed++
+		if midUsed >= wantMid || midUsed >= len(d.xTicks) {
+			break
+		}
+	}
+
+	// Ensure right label is always visible and not pushed off by cache mismatch
+	_ = rightSz
 }
 
 /* ---------------------------
@@ -386,27 +758,25 @@ func drawGrid(img *image.RGBA, x0, y0, w, h float32, c color.Color, stroke float
 }
 
 // drawLineAA draws an anti-aliased line with a given stroke width.
-// This is a pragmatic AA: sample coverage around the ideal line with alpha blending.
 func drawLineAA(img *image.RGBA, x1, y1, x2, y2 float32, c color.Color, stroke float32) {
 	if stroke < 1 {
 		stroke = 1
 	}
 
-	// For thicker lines, draw multiple offset AA lines
 	half := stroke / 2
 	steps := int(math.Max(1, float64(stroke)))
 	for i := -steps; i <= steps; i++ {
 		off := (float32(i) / float32(steps)) * half
-		// offset perpendicular
+
 		dx := x2 - x1
 		dy := y2 - y1
-		len := float32(math.Hypot(float64(dx), float64(dy)))
-		if len == 0 {
+		llen := float32(math.Hypot(float64(dx), float64(dy)))
+		if llen == 0 {
 			blendPixel(img, int(math.Round(float64(x1))), int(math.Round(float64(y1))), c, 1)
 			continue
 		}
-		nx := -dy / len
-		ny := dx / len
+		nx := -dy / llen
+		ny := dx / llen
 		ax1 := x1 + nx*off
 		ay1 := y1 + ny*off
 		ax2 := x2 + nx*off
@@ -434,12 +804,10 @@ func wuLine(img *image.RGBA, x0, y0, x1, y1 float32, c color.Color) {
 		gradient = dy / dx
 	}
 
-	// helper
 	ipart := func(x float64) float64 { return math.Floor(x) }
 	fpart := func(x float64) float64 { return x - math.Floor(x) }
 	rfpart := func(x float64) float64 { return 1 - fpart(x) }
 
-	// first endpoint
 	xend := math.Round(float64(x0))
 	yend := float64(y0) + gradient*(xend-float64(x0))
 	xgap := rfpart(float64(x0) + 0.5)
@@ -459,14 +827,12 @@ func wuLine(img *image.RGBA, x0, y0, x1, y1 float32, c color.Color) {
 
 	intery := yend + gradient
 
-	// second endpoint
 	xend = math.Round(float64(x1))
 	yend = float64(y1) + gradient*(xend-float64(x1))
 	xgap = fpart(float64(x1) + 0.5)
 	xpxl2 := int(xend)
 	ypxl2 := int(ipart(yend))
 
-	// main loop
 	for x := xpxl1 + 1; x <= xpxl2-1; x++ {
 		plot(x, int(ipart(intery)), rfpart(intery))
 		plot(x, int(ipart(intery))+1, fpart(intery))
@@ -481,7 +847,6 @@ func drawCircleAA(img *image.RGBA, cx, cy, r float32, c color.Color) {
 	if r <= 0 {
 		return
 	}
-	// simple soft circle: for each pixel in bounding box compute distance and blend
 	minX := int(math.Floor(float64(cx - r - 1)))
 	maxX := int(math.Ceil(float64(cx + r + 1)))
 	minY := int(math.Floor(float64(cy - r - 1)))
@@ -493,7 +858,6 @@ func drawCircleAA(img *image.RGBA, cx, cy, r float32, c color.Color) {
 			dx := (float64(x) + 0.5) - float64(cx)
 			dy := (float64(y) + 0.5) - float64(cy)
 			dist := math.Hypot(dx, dy)
-			// soft edge: 1px feather
 			alpha := 0.0
 			if dist <= rr {
 				alpha = 1.0
@@ -532,7 +896,6 @@ func blendPixel(img *image.RGBA, x, y int, c color.Color, alpha float64) {
 	db := float64(img.Pix[i+2]) / 255.0
 	da := float64(img.Pix[i+3]) / 255.0
 
-	// standard "source over" blend
 	outA := sa + da*(1-sa)
 	if outA <= 0 {
 		return

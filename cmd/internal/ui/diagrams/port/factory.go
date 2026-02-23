@@ -26,6 +26,10 @@ type BarChartOptions struct {
 
 	MultiColor []color.Color
 }
+type VariableStyle struct {
+	VariableName string
+	VarColor     color.Color
+}
 
 // LineChartOptions controls rendering and scaling.
 type LineChartOptions struct {
@@ -49,8 +53,8 @@ type LineChartOptions struct {
 	Background color.Color
 	Axis       color.Color
 	Grid       color.Color
-	Line       color.Color
-	Marker     color.Color
+	//Line       color.Color
+	Marker color.Color
 
 	// Stroke widths
 	AxisStroke   float32
@@ -62,6 +66,7 @@ type LineChartOptions struct {
 	GridX int // vertical grid lines
 	GridY int // horizontal grid lines
 
+	Variables []VariableStyle
 }
 
 func DefaultLineChartOptions() LineChartOptions {
@@ -82,8 +87,8 @@ func DefaultLineChartOptions() LineChartOptions {
 		Background: color.NRGBA{R: 15, G: 15, B: 15, A: 255},
 		Axis:       color.NRGBA{R: 190, G: 190, B: 190, A: 255},
 		Grid:       color.NRGBA{R: 70, G: 70, B: 70, A: 255},
-		Line:       color.NRGBA{R: 80, G: 130, B: 255, A: 255},
-		Marker:     color.NRGBA{R: 220, G: 220, B: 220, A: 255},
+		//Line:       color.NRGBA{R: 80, G: 130, B: 255, A: 255},
+		Marker: color.NRGBA{R: 220, G: 220, B: 220, A: 255},
 
 		AxisStroke:   1,
 		GridStroke:   1,

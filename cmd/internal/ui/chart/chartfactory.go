@@ -110,13 +110,25 @@ func CreateBarchartDrawer(drawerFactory draw.Factory, setup *viewproject.SetupIt
 func CreateLinechartDrawer(drawerFactory draw.Factory, setup *viewproject.SetupItem, index int, width, height float32, maxPoints int) (draw.DiagramWidget, error) {
 	opts := draw.DefaultLineChartOptions()
 
-	if setup.DiagramStyle != nil {
+	if setup.MultiVariableSetup != nil {
+		vars := make([]draw.VariableStyle, 0)
+		for i := range setup.MultiVariableSetup {
+			current := setup.MultiVariableSetup[i]
+			theBar, ok := current.DiagramStyle.(viewproject.LineStyle)
+			if !ok {
+				continue
+			}
+			col := colornames.Map[theBar.Line]
+			vars = append(vars, draw.VariableStyle{VariableName: current.Variable, VarColor: col})
+		}
+		opts.Variables = vars
+	} else {
 		if bs, ok := setup.DiagramStyle.(viewproject.LineStyle); ok {
 			lineColor := colornames.Map[bs.Line]
 			backgroundColor := colornames.Map[bs.Background]
-
-			opts.Line = lineColor
 			opts.Background = backgroundColor
+
+			opts.Variables = []draw.VariableStyle{{VariableName: setup.Variable, VarColor: lineColor}}
 		}
 	}
 
