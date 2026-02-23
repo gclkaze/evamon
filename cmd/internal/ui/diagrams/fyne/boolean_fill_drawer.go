@@ -15,9 +15,11 @@ type BoolFillDrawer struct {
 	root       fyne.CanvasObject
 	trueColor  color.Color
 	falseColor color.Color
+
+	varname string
 }
 
-func NewBoolFillDrawer(trueColor, falseColor color.Color) *BoolFillDrawer {
+func NewBoolFillDrawer(trueColor, falseColor color.Color, varname string) *BoolFillDrawer {
 	r := canvas.NewRectangle(falseColor)
 
 	// NewMax makes it expand to fill available space and resize nicely.

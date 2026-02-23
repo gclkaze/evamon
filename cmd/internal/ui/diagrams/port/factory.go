@@ -103,7 +103,7 @@ func DefaultLineChartOptions() LineChartOptions {
 }
 
 type Factory interface {
-	NewBoolFill(opts BoolFillOptions, title string, description string, width, height float32) DiagramWidget
+	NewBoolFill(opts BoolFillOptions, title string, description string, width, height float32, varname string) DiagramWidget
 	NewBarChart(opts BarChartOptions, title string, description string, width, height float32) DiagramWidget
 	NewLineChart(opts LineChartOptions, title string, description string, initialWidth, initialHeight, width, height float32) DiagramWidget
 }

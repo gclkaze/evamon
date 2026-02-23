@@ -35,7 +35,7 @@ func NewFactory() *Factory {
 		return NewBarChartDrawer(opts.MaxPoints, opts.Width, opts.Height, opts.Axis, opts.Background)
 	}
 */
-func (f *Factory) NewBoolFill(opts port.BoolFillOptions, title string, description string, width, height float32) port.DiagramWidget {
+func (f *Factory) NewBoolFill(opts port.BoolFillOptions, title string, description string, width, height float32, varname string) port.DiagramWidget {
 	trueC := opts.TrueColor
 	falseC := opts.FalseColor
 	if trueC == nil {
@@ -45,7 +45,7 @@ func (f *Factory) NewBoolFill(opts port.BoolFillOptions, title string, descripti
 		falseC = f.defaultFalse
 	}
 
-	drawer := NewBoolFillDrawer(trueC, falseC)
+	drawer := NewBoolFillDrawer(trueC, falseC, varname)
 	return NewBoolFillWidget(drawer, title, description, width, height) // tiny wrapper to satisfy DiagramWidget
 }
 

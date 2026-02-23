@@ -60,7 +60,7 @@ func CreateBoolDrawer(drawerFactory draw.Factory, setup *viewproject.SetupItem, 
 	w := drawerFactory.NewBoolFill(draw.BoolFillOptions{
 		TrueColor:  trueColor,
 		FalseColor: falseColor,
-	}, setup.Title, setup.Description, width, height)
+	}, setup.Title, setup.Description, width, height, setup.Variable)
 	return w, nil
 }
 
