@@ -51,11 +51,13 @@ func (f *Factory) NewBoolFill(opts port.BoolFillOptions, title string, descripti
 
 func (f *Factory) NewBarChart(opts port.BarChartOptions, title string, description string, width, height float32) port.DiagramWidget {
 	var drawer *BarChartDrawer
-	if len(opts.MultiColor) > 0 {
-		drawer = NewBarChartDrawer(opts.MaxPoints, opts.Width, opts.Height, opts.MultiColor, opts.Background)
-	} else {
-		drawer = NewBarChartDrawer(opts.MaxPoints, opts.Width, opts.Height, []color.Color{opts.Axis}, opts.Background)
-	}
+	/*	if len(opts.Variables) > 0 {
+			drawer = NewBarChartDrawer(opts.MaxPoints, opts.Width, opts.Height, opts.Variables, opts.Background)
+		} else {
+
+		}*/
+
+	drawer = NewBarChartDrawer(opts.MaxPoints, opts.Width, opts.Height, opts.Variables, opts.Background)
 	return NewBarChartWidget(drawer, title, description, width, height) // the resize-aware wrapper
 }
 

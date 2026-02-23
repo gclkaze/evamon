@@ -24,7 +24,9 @@ type BarChartOptions struct {
 	Axis       color.Color
 	Background color.Color
 
-	MultiColor []color.Color
+	//	MultiColor []color.Color
+
+	Variables []VariableStyle
 }
 type VariableStyle struct {
 	VariableName string

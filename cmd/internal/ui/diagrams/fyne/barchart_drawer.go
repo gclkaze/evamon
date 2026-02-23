@@ -10,6 +10,8 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+
+	"github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 )
 
 // BarChartDrawer draws the last N integer values as vertical bars.
@@ -26,7 +28,8 @@ type BarChartDrawer struct {
 	times  []time.Time
 
 	//barColor color.Color
-	barColor []color.Color
+	//barColor []color.Color
+	variables []port.VariableStyle
 
 	bgColor color.Color
 
@@ -42,7 +45,7 @@ type BarChartDrawer struct {
 func (d *BarChartDrawer) Redraw() {
 	d.redrawWithAxis()
 }
-func NewBarChartDrawer(maxPoints int, width, height float32, barColor []color.Color, bgColor color.Color) *BarChartDrawer {
+func NewBarChartDrawer(maxPoints int, width, height float32, variables []port.VariableStyle, bgColor color.Color) *BarChartDrawer {
 	if maxPoints <= 0 {
 		maxPoints = 50
 	}
@@ -58,17 +61,17 @@ func NewBarChartDrawer(maxPoints int, width, height float32, barColor []color.Co
 		maxPoints: maxPoints,
 		width:     width,
 		height:    height,
-		barColor:  barColor,
-		bgColor:   bgColor,
-
+		//barColor:  barColor,
+		bgColor:        bgColor,
 		xLabelTextSize: 11,
+		variables:      variables,
 	}
 	d.root = container.NewWithoutLayout()
 	d.root.Resize(fyne.NewSize(width, height))
 
-	d.vars = len(barColor)
+	d.vars = len(variables)
 	d.values = make([][]int, d.vars)
-	d.initRectangles(len(barColor))
+	d.initRectangles(len(variables))
 	return d
 }
 
@@ -249,7 +252,7 @@ func (d *BarChartDrawer) drawRects(plotY1, plotH, plotX0, slotW float32, yMin, y
 
 			y := plotY1 - bh
 
-			r := canvas.NewRectangle(d.barColor[j])
+			r := canvas.NewRectangle(d.variables[j].VarColor)
 			r.Move(fyne.NewPos(x, y))
 			r.Resize(fyne.NewSize(barW, bh))
 			d.root.Add(r)
