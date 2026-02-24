@@ -122,7 +122,7 @@ func (inst *ProjectUIHolder) setupAndBuildDiagramsMultiTabed(diagram viewproject
 		tabID := strconv.Itoa(j)
 		w.UpsertTab(tabID, title)
 
-		content := window.BuildDiagramContent(inst, inst.drawerFactory, w, setup, inst.MinChartWidth, inst.MinChartHeight, inst.defaultMaxPoints)
+		content := window.BuildDiagramContent(inst, inst.drawerFactory, w, setup, inst.MinChartWidth, inst.MinChartHeight, inst.defaultMaxPoints, diagram.Type)
 		w.AssignTab(tabID, content)
 		w.Show()
 	}
@@ -143,7 +143,8 @@ func (inst *ProjectUIHolder) setupAndBuildDiagrams(diagram viewproject.Diagram, 
 		}
 
 		w = inst.styleWindow(w, width, height, &setup, windowStyle)
-		w = window.BuildDiagram(inst, inst.drawerFactory, w, setup, inst.MinChartWidth, inst.MinChartHeight, inst.defaultMaxPoints)
+		w = window.BuildDiagram(inst, inst.drawerFactory, w, setup, inst.MinChartWidth, inst.MinChartHeight, inst.defaultMaxPoints, inst.renderer, &diagram)
+
 		w.Show()
 
 		ws = append(ws, w)

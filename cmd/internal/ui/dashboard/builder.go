@@ -2,13 +2,11 @@ package dashboardbuilder
 
 import (
 	"fmt"
-	"image/color"
 	"strings"
 
 	window "github.com/gclkaze/evamon/cmd/internal/ui/chart"
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
-	"golang.org/x/image/colornames"
 
 	dport "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 	vp "github.com/gclkaze/evamon/cmd/internal/viewproject"
@@ -242,8 +240,8 @@ func (b *Builder) buildBooleanDiagram(jobID string, d *vp.Diagram) (uport.UIObje
 	var parts []uport.UIObject
 	var bindings []BindingTarget
 
-	vars := b.collectVariables(d)
-	theItems := variableStylesToLegendItems(vars)
+	vars := window.CollectVariables(d)
+	theItems := window.VariableStylesToLegendItems(vars)
 	legendObj := b.Layout.DiagramLegend(theItems, nil)
 	parts = append(parts, legendObj)
 
@@ -281,8 +279,8 @@ func (b *Builder) buildBarDiagram(jobID string, d *vp.Diagram) (uport.UIObject, 
 	var parts []uport.UIObject
 	var bindings []BindingTarget
 
-	vars := b.collectVariables(d)
-	theItems := variableStylesToLegendItems(vars)
+	vars := window.CollectVariables(d)
+	theItems := window.VariableStylesToLegendItems(vars)
 	//parts = append(parts, legendObj)
 
 	var w dport.DiagramWidget
@@ -313,110 +311,12 @@ func (b *Builder) buildBarDiagram(jobID string, d *vp.Diagram) (uport.UIObject, 
 	return b.Layout.VBox(parts...), bindings, nil
 }
 
-func (b *Builder) collectVariables(d *vp.Diagram) []dport.VariableStyle {
-	var out []dport.VariableStyle
-
-	for si := range d.Setup {
-		s := &d.Setup[si]
-
-		// ----------------------------
-		// Multi-variable
-		// ----------------------------
-		if len(s.MultiVariableSetup) > 0 {
-			for ci := range s.MultiVariableSetup {
-				ms := &s.MultiVariableSetup[ci]
-
-				var col color.Color
-				txt := ""
-				switch d.Type {
-				case vp.DiagramTypeBar:
-					if bs, ok := ms.DiagramStyle.(vp.BarStyle); ok {
-						txt = bs.Bar
-						col = lookupColor(bs.Bar)
-					}
-
-				case vp.DiagramTypeLine:
-					if ls, ok := ms.DiagramStyle.(vp.LineStyle); ok {
-						txt = ls.Line
-						col = lookupColor(ls.Line)
-					}
-				}
-
-				out = append(out, dport.VariableStyle{
-					VariableName: ms.Variable,
-					VarColor:     col,
-					VarColorText: txt,
-				})
-			}
-			continue
-		}
-
-		// ----------------------------
-		// Single-variable
-		// ----------------------------
-		var col color.Color
-		txt := ""
-		switch d.Type {
-		case vp.DiagramTypeBar:
-			if bs, ok := s.DiagramStyle.(vp.BarStyle); ok {
-				txt = bs.Axis
-				col = lookupColor(bs.Axis)
-			}
-
-		case vp.DiagramTypeLine:
-			if ls, ok := s.DiagramStyle.(vp.LineStyle); ok {
-				txt = ls.Line
-				col = lookupColor(ls.Line)
-			}
-
-		case vp.DiagramTypeBoolean:
-			if bs, ok := s.DiagramStyle.(vp.BooleanStyle); ok {
-				txt = bs.True
-				col = lookupColor(bs.True)
-			}
-		}
-
-		out = append(out, dport.VariableStyle{
-			VariableName: s.Variable,
-			VarColor:     col,
-			VarColorText: txt,
-		})
-	}
-
-	return out
-}
-func lookupColor(s string) color.Color {
-	s = strings.ToLower(strings.TrimSpace(s))
-
-	if c, ok := colornames.Map[s]; ok {
-		return c
-	}
-
-	// fallback (neutral gray if unknown)
-	return colornames.Gray
-}
-
-func variableStylesToLegendItems(vars []dport.VariableStyle) []port.LegendItem {
-	out := make([]port.LegendItem, 0, len(vars))
-
-	for i, v := range vars {
-		out = append(out, port.LegendItem{
-			Key:   v.VariableName, // stable id
-			Label: v.VariableName, // you can change if you later add display name
-			Color: v.VarColorText, // convert color.Color → string
-			Index: i,
-		})
-	}
-
-	return out
-}
-
 func (b *Builder) buildLineDiagram(jobID string, d *vp.Diagram) (uport.UIObject, []BindingTarget, error) {
 	var parts []uport.UIObject
 	var bindings []BindingTarget
 
-	vars := b.collectVariables(d)
-	theItems := variableStylesToLegendItems(vars)
+	vars := window.CollectVariables(d)
+	theItems := window.VariableStylesToLegendItems(vars)
 	//legendObj := b.Layout.DiagramLegend(theItems, nil)
 	//parts = append(parts, legendObj)
 	var w dport.DiagramWidget

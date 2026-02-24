@@ -53,7 +53,7 @@ type barChartWidgetRenderer struct {
 func (r *barChartWidgetRenderer) Layout(size fyne.Size) {
 	// Propagate size to the drawer root container
 	r.root.Resize(size)
-
+	r.w.drawer.root.Resize(size)
 	// Redraw using the new size (drawer reads d.root.Size()).
 	r.w.drawer.Redraw()
 }

@@ -3,6 +3,7 @@ package window
 import (
 	"fmt"
 	"image/color"
+	"strings"
 
 	draw "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
@@ -10,23 +11,139 @@ import (
 	"golang.org/x/image/colornames"
 )
 
-func BuildDiagramContent(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w port.ExecutionWindow, setup viewproject.SetupItem, width, height float32, maxPoints int) draw.DiagramWidget {
-	switch setup.VariableType {
-	case viewproject.ValueTypeBoolean:
+func BuildDiagramContent(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w port.ExecutionWindow, setup viewproject.SetupItem, width, height float32, maxPoints int, t viewproject.DiagramType) draw.DiagramWidget {
+	switch t {
+	case viewproject.DiagramTypeBoolean:
 		boolFill := buildBooleanDiagram(holder, drawerFactory, setup, width, height)
 		return boolFill
-	case viewproject.ValueTypeInteger:
+	case viewproject.DiagramTypeBar:
 		barChart := buildBarchart(holder, drawerFactory, setup, width, height, maxPoints)
 		return barChart
+	case viewproject.DiagramTypeLine:
+		lineChart := buildLinechart(holder, drawerFactory, setup, width, height, maxPoints)
+		return lineChart
 	}
 	return nil
 }
 
-func BuildDiagram(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w port.ExecutionWindow, setup viewproject.SetupItem, width, height float32, maxPoints int) port.ExecutionWindow {
-	drawer := BuildDiagramContent(holder, drawerFactory, w, setup, width, height, maxPoints)
-	w.SetContent(drawer)
+func BuildDiagram(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w port.ExecutionWindow, setup viewproject.SetupItem, width, height float32, maxPoints int,
+	renderer port.Renderer, diagram *viewproject.Diagram) port.ExecutionWindow {
+
+	vars := CollectVariables(diagram)
+	theItems := VariableStylesToLegendItems(vars)
+
+	drawer := BuildDiagramContent(holder, drawerFactory, w, setup, width, height, maxPoints, diagram.Type)
+
+	l := renderer.Layout()
+	legendObj := l.DiagramLegend(theItems, func(it *port.LegendItem) {
+		if len(theItems) == 1 {
+			return
+		}
+		drawer.ToggleItem(it)
+	})
+
+	c := l.Border(legendObj, nil, nil, nil, drawer)
+	w.SetContent(c)
 	w.SetResizable(true)
 	return w
+}
+
+func VariableStylesToLegendItems(vars []draw.VariableStyle) []port.LegendItem {
+	out := make([]port.LegendItem, 0, len(vars))
+
+	for i, v := range vars {
+		out = append(out, port.LegendItem{
+			Key:   v.VariableName, // stable id
+			Label: v.VariableName, // you can change if you later add display name
+			Color: v.VarColorText, // convert color.Color → string
+			Index: i,
+		})
+	}
+
+	return out
+}
+
+func CollectVariables(d *viewproject.Diagram) []draw.VariableStyle {
+	var out []draw.VariableStyle
+
+	for si := range d.Setup {
+		s := &d.Setup[si]
+
+		// ----------------------------
+		// Multi-variable
+		// ----------------------------
+		if len(s.MultiVariableSetup) > 0 {
+			for ci := range s.MultiVariableSetup {
+				ms := &s.MultiVariableSetup[ci]
+
+				var col color.Color
+				txt := ""
+				switch d.Type {
+				case viewproject.DiagramTypeBar:
+					if bs, ok := ms.DiagramStyle.(viewproject.BarStyle); ok {
+						txt = bs.Bar
+						col = lookupColor(bs.Bar)
+					}
+
+				case viewproject.DiagramTypeLine:
+					if ls, ok := ms.DiagramStyle.(viewproject.LineStyle); ok {
+						txt = ls.Line
+						col = lookupColor(ls.Line)
+					}
+				}
+
+				out = append(out, draw.VariableStyle{
+					VariableName: ms.Variable,
+					VarColor:     col,
+					VarColorText: txt,
+				})
+			}
+			continue
+		}
+
+		// ----------------------------
+		// Single-variable
+		// ----------------------------
+		var col color.Color
+		txt := ""
+		switch d.Type {
+		case viewproject.DiagramTypeBar:
+			if bs, ok := s.DiagramStyle.(viewproject.BarStyle); ok {
+				txt = bs.Axis
+				col = lookupColor(bs.Axis)
+			}
+
+		case viewproject.DiagramTypeLine:
+			if ls, ok := s.DiagramStyle.(viewproject.LineStyle); ok {
+				txt = ls.Line
+				col = lookupColor(ls.Line)
+			}
+
+		case viewproject.DiagramTypeBoolean:
+			if bs, ok := s.DiagramStyle.(viewproject.BooleanStyle); ok {
+				txt = bs.True
+				col = lookupColor(bs.True)
+			}
+		}
+
+		out = append(out, draw.VariableStyle{
+			VariableName: s.Variable,
+			VarColor:     col,
+			VarColorText: txt,
+		})
+	}
+
+	return out
+}
+func lookupColor(s string) color.Color {
+	s = strings.ToLower(strings.TrimSpace(s))
+
+	if c, ok := colornames.Map[s]; ok {
+		return c
+	}
+
+	// fallback (neutral gray if unknown)
+	return colornames.Gray
 }
 
 func buildBooleanDiagram(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, setup viewproject.SetupItem, width, height float32) draw.DiagramWidget {
@@ -126,7 +243,7 @@ func CreateLinechartDrawer(drawerFactory draw.Factory, setup *viewproject.SetupI
 				continue
 			}
 			col := colornames.Map[theBar.Line]
-			vars = append(vars, draw.VariableStyle{VariableName: current.Variable, VarColor: col})
+			vars = append(vars, draw.VariableStyle{VariableName: current.Variable, VarColor: col, VarColorText: theBar.Line})
 		}
 		opts.Variables = vars
 	} else {
@@ -135,7 +252,7 @@ func CreateLinechartDrawer(drawerFactory draw.Factory, setup *viewproject.SetupI
 			backgroundColor := colornames.Map[bs.Background]
 			opts.Background = backgroundColor
 
-			opts.Variables = []draw.VariableStyle{{VariableName: setup.Variable, VarColor: lineColor}}
+			opts.Variables = []draw.VariableStyle{{VariableName: setup.Variable, VarColor: lineColor, VarColorText: bs.Line}}
 		}
 	}
 
@@ -148,6 +265,16 @@ func CreateLinechartDrawer(drawerFactory draw.Factory, setup *viewproject.SetupI
 	)
 
 	return w, nil
+}
+
+func buildLinechart(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, setup viewproject.SetupItem, width, height float32, maxPoints int) draw.DiagramWidget {
+	linechart, err := CreateLinechartDrawer(drawerFactory, &setup, -1, width, height, maxPoints)
+	if err != nil {
+		return nil
+	}
+
+	holder.RegisterVariableDrawerUnsubscriber(setup.Variable, linechart)
+	return linechart
 }
 
 func buildBarchart(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, setup viewproject.SetupItem, width, height float32, maxPoints int) draw.DiagramWidget {

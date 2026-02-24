@@ -45,4 +45,6 @@ type Layout interface {
 	DiagramLegend(items []LegendItem, onClick func(*LegendItem)) UIObject
 
 	SetLegendAction(legend UIObject, onClick func(*LegendItem))
+
+	Border(top, bottom, left, right, center UIObject) UIObject
 }

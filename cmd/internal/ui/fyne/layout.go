@@ -108,3 +108,32 @@ func (Layout) DiagramLegend(items []port.LegendItem, onClick func(*port.LegendIt
 func (Layout) SetLegendAction(legend port.UIObject, onClick func(*port.LegendItem)) {
 	unwrap(legend)
 }
+func (Layout) Border(top, bottom, left, right, center port.UIObject) port.UIObject {
+	var topObj, bottomObj, leftObj, rightObj, centerObj fyne.CanvasObject
+
+	if top != nil {
+		topObj = unwrap(top)
+	}
+	if bottom != nil {
+		bottomObj = unwrap(bottom)
+	}
+	if left != nil {
+		leftObj = unwrap(left)
+	}
+	if right != nil {
+		rightObj = unwrap(right)
+	}
+	if center != nil {
+		centerObj = unwrap(center)
+	}
+
+	content := container.NewBorder(
+		topObj,
+		bottomObj,
+		leftObj,
+		rightObj,
+		centerObj, // center fills remaining space
+	)
+
+	return wrap(content)
+}
