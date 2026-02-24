@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 	dport "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
+	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
@@ -64,6 +65,10 @@ func (w *LineChartWidget) CreateRenderer() fyne.WidgetRenderer {
 			w.drawer.Object(),
 		},
 	}
+}
+
+func (w *LineChartWidget) ToggleItem(it *port.LegendItem) {
+	w.drawer.ToggleItem(it)
 }
 func (w *LineChartWidget) Title() string       { return w.title }
 func (w *LineChartWidget) Description() string { return w.description }

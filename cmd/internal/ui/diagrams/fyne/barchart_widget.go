@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/widget"
+	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
 type BarChartWidget struct {
@@ -29,6 +30,9 @@ func (w *BarChartWidget) Push(at time.Time, val any) {
 }
 func (w *BarChartWidget) Title() string       { return w.title }
 func (w *BarChartWidget) Description() string { return w.description }
+func (w *BarChartWidget) ToggleItem(it *port.LegendItem) {
+	w.drawer.ToggleItem(it)
+}
 
 func (w *BarChartWidget) Native() any { return w }
 func (w *BarChartWidget) CreateRenderer() fyne.WidgetRenderer {

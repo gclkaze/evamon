@@ -1,12 +1,14 @@
 package fynediagrams
 
 import (
+	"fmt"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/widget"
 	dport "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
+	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
@@ -28,7 +30,11 @@ func NewBoolFillWidget(drawer *BoolFillDrawer, title string, description string,
 func (w *BoolFillWidget) Native() any         { return w }
 func (w *BoolFillWidget) Title() string       { return w.title }
 func (w *BoolFillWidget) Description() string { return w.description }
-
+func (x *BoolFillWidget) ToggleItem(it *port.LegendItem) {
+	//x.ToggleItem(it)
+	fmt.Printf("BoolFillWidget toggle item")
+	fmt.Print(it)
+}
 func (w *BoolFillWidget) CreateRenderer() fyne.WidgetRenderer {
 	root := w.drawer.Root()
 	return &boolFillWidgetRenderer{w: w, root: root, objs: []fyne.CanvasObject{root}}

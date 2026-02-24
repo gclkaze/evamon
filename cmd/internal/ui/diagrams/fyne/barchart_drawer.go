@@ -10,8 +10,8 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-
 	"github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
+	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
 // BarChartDrawer draws the last N integer values as vertical bars.
@@ -40,6 +40,8 @@ type BarChartDrawer struct {
 	xLabelTextSize float32
 	xLabelSampleW  float32
 	xLabelCacheOK  bool
+
+	shownIndices map[int]bool
 }
 
 func (d *BarChartDrawer) Redraw() {
@@ -72,6 +74,12 @@ func NewBarChartDrawer(maxPoints int, width, height float32, variables []port.Va
 	d.vars = len(variables)
 	d.values = make([][]int, d.vars)
 	d.initRectangles(len(variables))
+
+	d.shownIndices = map[int]bool{}
+	for i := range d.vars {
+		d.shownIndices[i] = true
+	}
+
 	return d
 }
 
@@ -101,14 +109,19 @@ func (d *BarChartDrawer) SetLabelTextSize(size float32) {
 }
 
 func (d *BarChartDrawer) addAllRects() {
+
 	for i := range d.bg {
-		d.root.Add(d.bg[i])
+		if d.variableShown(i) {
+			d.root.Add(d.bg[i])
+		}
 	}
 }
 
 func (d *BarChartDrawer) resizeAllRects(w, h float32) {
 	for i := range d.bg {
-		d.bg[i].Resize(fyne.NewSize(w, h))
+		if d.variableShown(i) {
+			d.bg[i].Resize(fyne.NewSize(w, h))
+		}
 	}
 }
 
@@ -191,14 +204,20 @@ func (d *BarChartDrawer) trim() {
 	d.times = d.times[start:]
 
 	for j := range d.values {
-		if len(d.values[j]) >= d.maxPoints {
+		if len(d.values[j]) > start { // ensure slice start is valid
 			d.values[j] = d.values[j][start:]
+		} else {
+			// If something went out of sync, keep it empty rather than panicking
+			d.values[j] = nil
 		}
 	}
 }
 func (d *BarChartDrawer) getMaxValue() int {
 	maxV := 0
 	for i := range d.values {
+		if !d.variableShown(i) {
+			continue
+		}
 		for j := range d.values[i] {
 			if maxV < d.values[i][j] {
 				maxV = d.values[i][j]
@@ -208,7 +227,20 @@ func (d *BarChartDrawer) getMaxValue() int {
 	return maxV
 }
 
-func (d *BarChartDrawer) drawRects(plotY1, plotH, plotX0, slotW float32, yMin, yMax float64) {
+func (d *BarChartDrawer) variableShown(i int) bool {
+	return d.shownIndices[i]
+}
+
+func (d *BarChartDrawer) ToggleItem(it *uport.LegendItem) {
+	if d.vars <= 1 {
+		return
+	}
+	d.shownIndices[it.Index] = !d.shownIndices[it.Index]
+
+	d.Redraw()
+}
+
+func (d *BarChartDrawer) drawRects2(plotY1, plotH, plotX0, slotW float32, yMin, yMax float64) {
 	seriesCount := d.vars
 	if seriesCount == 0 {
 		return
@@ -217,6 +249,9 @@ func (d *BarChartDrawer) drawRects(plotY1, plotH, plotX0, slotW float32, yMin, y
 	// pointCount must be valid for *all* series
 	pointCount := d.pointCountSafe()
 	for j := 0; j < seriesCount; j++ {
+		if !d.variableShown(j) {
+			continue
+		}
 		if j >= len(d.values) { // extra safety if slices not initialized as expected
 			return
 		}
@@ -234,6 +269,10 @@ func (d *BarChartDrawer) drawRects(plotY1, plotH, plotX0, slotW float32, yMin, y
 
 	for i := 0; i < pointCount; i++ {
 		for j := 0; j < seriesCount; j++ {
+			if !d.variableShown(j) {
+				continue
+			}
+
 			// now safe: i < len(d.values[j]) and i < len(d.times)
 			val := float64(d.values[j][i])
 
@@ -259,193 +298,66 @@ func (d *BarChartDrawer) drawRects(plotY1, plotH, plotX0, slotW float32, yMin, y
 		}
 	}
 }
-func (d *BarChartDrawer) redrawWithAxis2() {
-	sz := d.root.Size()
-	w, h := sz.Width, sz.Height
-	if w <= 1 || h <= 1 {
+
+func (d *BarChartDrawer) drawRects(plotY1, plotH, plotX0, slotW float32, yMin, yMax float64) {
+	if d.vars == 0 {
 		return
 	}
 
-	//d.bg.Resize(fyne.NewSize(w, h))
-	d.resizeAllRects(w, h)
+	// Build list of visible series indices
+	visible := make([]int, 0, d.vars)
+	for j := 0; j < d.vars; j++ {
+		if d.variableShown(j) {
+			visible = append(visible, j)
+		}
+	}
+	visCount := len(visible)
+	if visCount == 0 {
+		return
+	}
 
-	// Clear everything but keep background.
-	d.root.Objects = d.root.Objects[:0]
-	//d.root.Add(d.bg)
-	d.addAllRects()
-
-	pointCount := len(d.times)
+	// Point count must be safe for what we're drawing (visible series + times)
+	pointCount := d.pointCountSafe()
 	if pointCount == 0 {
-		d.root.Refresh()
 		return
 	}
 
-	// ---- styling ----
-	axisColor := color.NRGBA{R: 170, G: 170, B: 170, A: 255}
-	gridColor := color.NRGBA{R: 255, G: 255, B: 255, A: 28} // subtle
-	labelColor := color.NRGBA{R: 225, G: 225, B: 225, A: 255}
-
-	// IMPORTANT: leave enough room for y labels (k/M/B) and tick marks.
-	marginLeft := float32(78)
-	marginRight := float32(12)
-	marginTop := float32(12)
-	marginBottom := float32(34)
-
-	plotX0 := marginLeft
-	plotY0 := marginTop
-	plotX1 := w - marginRight
-	plotY1 := h - marginBottom
-
-	plotW := plotX1 - plotX0
-	plotH := plotY1 - plotY0
-	if plotW <= 2 || plotH <= 2 {
-		d.root.Refresh()
-		return
+	groupW := slotW
+	innerSlotW := groupW / float32(visCount)
+	barW := innerSlotW * 0.8
+	if barW < 1 {
+		barW = 1
 	}
 
-	// ---- data range (with headroom) ----
-	maxV := d.getMaxValue() //0
-	/*	for _, v := range d.values {
-		if v > maxV {
-			maxV = v
-		}
-	}*/
-	if maxV <= 0 {
-		maxV = 1
-	}
-
-	// add ~10% headroom so top bar doesn’t touch ceiling
-	maxWithHeadroom := float64(maxV) * 1.10
-	ticks := computeNiceTicks(0, maxWithHeadroom, 6) // target ~6 ticks
-
-	yMin := ticks.Min
-	yMax := ticks.Max
-	if yMax <= yMin {
-		yMax = yMin + 1
-	}
-
-	// ---- axes ----
-	yAxis := canvas.NewLine(axisColor)
-	yAxis.Position1 = fyne.NewPos(plotX0, plotY0)
-	yAxis.Position2 = fyne.NewPos(plotX0, plotY1)
-	d.root.Add(yAxis)
-
-	xAxis := canvas.NewLine(axisColor)
-	xAxis.Position1 = fyne.NewPos(plotX0, plotY1)
-	xAxis.Position2 = fyne.NewPos(plotX1, plotY1)
-	d.root.Add(xAxis)
-
-	// ---- horizontal grid + y labels ----
-	tickLen := float32(6)
-
-	for _, tv := range ticks.Ticks {
-		frac := float32((tv - yMin) / (yMax - yMin)) // 0..1
-		frac = clamp01(frac)
-		y := plotY1 - frac*plotH
-
-		// grid line across plot
-		grid := canvas.NewLine(gridColor)
-		grid.Position1 = fyne.NewPos(plotX0, y)
-		grid.Position2 = fyne.NewPos(plotX1, y)
-		d.root.Add(grid)
-
-		// tick mark
-		tick := canvas.NewLine(axisColor)
-		tick.Position1 = fyne.NewPos(plotX0-tickLen, y)
-		tick.Position2 = fyne.NewPos(plotX0, y)
-		d.root.Add(tick)
-
-		// label
-		lbl := canvas.NewText(formatCompact(tv), labelColor)
-		lbl.TextSize = 11
-		lbl.Alignment = fyne.TextAlignTrailing
-		lbl.Refresh()
-		ls := lbl.MinSize()
-		lbl.Move(fyne.NewPos(plotX0-tickLen-6-ls.Width, y-ls.Height/2))
-		d.root.Add(lbl)
-	}
-
-	// ---- bars ----
-	//	slotW := plotW / float32(pointCount)
-	slotW := plotW / float32(pointCount)
-
-	d.drawRects(plotY1, plotH, plotX0, slotW, yMin, yMax)
-
-	// ---- X labels (times) with overlap-aware density ----
-	// ---- X labels (times) with overlap-aware density ----
-	if pointCount > 0 {
-		// Special-case: only one point -> one label, no division by (maxLabels-1)
-		if pointCount == 1 {
-			t := d.times[0]
-			lbl := canvas.NewText(t.Format("15:04:05"), labelColor)
-			lbl.TextSize = 11
-			lbl.Alignment = fyne.TextAlignCenter
-			lbl.Refresh()
-
-			cx := plotX0 + plotW/2
-			ls := lbl.MinSize()
-			lbl.Move(fyne.NewPos(cx-ls.Width/2, plotY1+6))
-			d.root.Add(lbl)
-
-			// optional: small vertical tick on x-axis
-			xTick := canvas.NewLine(axisColor)
-			xTick.Position1 = fyne.NewPos(cx, plotY1)
-			xTick.Position2 = fyne.NewPos(cx, plotY1+4)
-			d.root.Add(xTick)
-		} else {
-			// Estimate how many labels fit: use a sample label width.
-			sample := canvas.NewText("88:88:88", labelColor)
-			sample.TextSize = 11
-			sample.Refresh()
-			sampleW := sample.MinSize().Width
-
-			// Aim for at least sampleW+8 spacing between labels.
-			minSpacing := sampleW + 8
-			maxLabels := int(plotW / minSpacing)
-
-			// clamp
-			if maxLabels < 2 {
-				maxLabels = 2
+	for i := 0; i < pointCount; i++ {
+		for visIdx, j := range visible {
+			// Safety: ensure we can read this point for this series
+			if j >= len(d.values) || i >= len(d.values[j]) {
+				continue
 			}
-			if maxLabels > 6 {
-				maxLabels = 6
+
+			val := float64(d.values[j][i])
+			frac := float32((val - yMin) / (yMax - yMin))
+			frac = clamp01(frac)
+
+			bh := frac * plotH
+			if bh < 1 {
+				bh = 1
 			}
-			if maxLabels > pointCount {
-				maxLabels = pointCount
-			}
-			// here: n>=2 => maxLabels>=2 => denom >= 1
-			den := float64(maxLabels - 1)
 
-			for k := 0; k < maxLabels; k++ {
-				idx := int(math.Round(float64(k) * float64(pointCount-1) / den))
-				if idx < 0 {
-					idx = 0
-				}
-				if idx > pointCount-1 {
-					idx = pointCount - 1
-				}
+			x := plotX0 +
+				float32(i)*groupW +
+				float32(visIdx)*innerSlotW +
+				(innerSlotW-barW)/2
 
-				t := d.times[idx]
+			y := plotY1 - bh
 
-				lbl := canvas.NewText(t.Format("15:04:05"), labelColor)
-				lbl.TextSize = 11
-				lbl.Alignment = fyne.TextAlignCenter
-				lbl.Refresh()
-
-				cx := plotX0 + (float32(idx)+0.5)*slotW
-				ls := lbl.MinSize()
-				lbl.Move(fyne.NewPos(cx-ls.Width/2, plotY1+6))
-				d.root.Add(lbl)
-
-				// optional: small vertical tick on x-axis
-				xTick := canvas.NewLine(axisColor)
-				xTick.Position1 = fyne.NewPos(cx, plotY1)
-				xTick.Position2 = fyne.NewPos(cx, plotY1+4)
-				d.root.Add(xTick)
-			}
+			r := canvas.NewRectangle(d.variables[j].VarColor)
+			r.Move(fyne.NewPos(x, y))
+			r.Resize(fyne.NewSize(barW, bh))
+			d.root.Add(r)
 		}
 	}
-	d.root.Refresh()
 }
 
 // --- small structs to keep signatures clean ---
@@ -735,6 +647,10 @@ func (d *BarChartDrawer) drawSingleXLabel(cx, axisY float32, s chartStyle, t tim
 func (d *BarChartDrawer) pointCountSafe() int {
 	pc := len(d.times)
 	for j := 0; j < d.vars; j++ {
+		if !d.variableShown(j) {
+			continue
+		}
+
 		if j >= len(d.values) {
 			return 0
 		}

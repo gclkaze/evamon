@@ -5,6 +5,7 @@ type UIObject interface {
 	Native() any
 	Title() string
 	Description() string
+	ToggleItem(*LegendItem)
 }
 
 type TabItem interface {
@@ -15,6 +16,7 @@ type LegendItem struct {
 	Key   string // stable id (e.g. "cpu")
 	Label string // display label (e.g. "CPU Metrics")
 	Color string // e.g. "dodgerblue" or "#1e90ff"
+	Index int
 }
 
 // Layout builds UI containers (VBox, Grid, Tabs, etc.) without exposing toolkit details.
@@ -40,5 +42,7 @@ type Layout interface {
 
 	// NEW: legend for multi-variable diagrams.
 	// If onClick is nil => non-interactive.
-	DiagramLegend(items []LegendItem, onClick func(key string)) UIObject
+	DiagramLegend(items []LegendItem, onClick func(*LegendItem)) UIObject
+
+	SetLegendAction(legend UIObject, onClick func(*LegendItem))
 }

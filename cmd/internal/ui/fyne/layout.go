@@ -100,7 +100,11 @@ func (Layout) Spacer() port.UIObject {
 // NEW: DiagramLegend
 // ----------------------
 
-func (Layout) DiagramLegend(items []port.LegendItem, onClick func(key string)) port.UIObject {
+func (Layout) DiagramLegend(items []port.LegendItem, onClick func(*port.LegendItem)) port.UIObject {
 	obj := newDiagramLegend(items, 6, onClick) // 6 items per row (tweak)
 	return wrap(obj)
+}
+
+func (Layout) SetLegendAction(legend port.UIObject, onClick func(*port.LegendItem)) {
+	unwrap(legend)
 }

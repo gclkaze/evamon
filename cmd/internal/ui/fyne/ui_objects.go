@@ -3,6 +3,7 @@ package fynerenderer
 import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
@@ -12,8 +13,11 @@ type fyneObj struct {
 	description string
 }
 
-func (x fyneObj) Native() any         { return x.o }
-func (x fyneObj) Title() string       { return x.title }
+func (x fyneObj) Native() any   { return x.o }
+func (x fyneObj) Title() string { return x.title }
+func (x fyneObj) ToggleItem(it *port.LegendItem) {
+	//x.ToggleItem(it)
+}
 func (x fyneObj) Description() string { return x.description }
 
 func (fyneObj) UIObjectMarker() {}

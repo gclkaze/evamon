@@ -14,6 +14,7 @@ import (
 	"fyne.io/fyne/v2/container"
 
 	port "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
+	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
 // LineChartDrawer draws multi-series points into a Raster and overlays axis labels.
@@ -64,6 +65,8 @@ type LineChartDrawer struct {
 	size fyne.Size
 
 	img *image.RGBA
+
+	shownIndices map[int]bool
 }
 
 func NewLineChartDrawer(opts port.LineChartOptions, initialWidth, initialHeight float32) *LineChartDrawer {
@@ -96,6 +99,11 @@ func NewLineChartDrawer(opts port.LineChartOptions, initialWidth, initialHeight 
 	d.vars = len(opts.Variables)
 	if d.vars <= 0 {
 		d.vars = 1
+	}
+
+	d.shownIndices = map[int]bool{}
+	for i := range d.vars {
+		d.shownIndices[i] = true
 	}
 	d.values = make([][]int, d.vars)
 
@@ -164,6 +172,18 @@ func NewLineChartDrawer(opts port.LineChartOptions, initialWidth, initialHeight 
 	return d
 }
 
+func (d *LineChartDrawer) variableShown(i int) bool {
+	return d.shownIndices[i]
+}
+
+func (d *LineChartDrawer) ToggleItem(it *uport.LegendItem) {
+	if len(d.shownIndices) == 1 {
+		return
+	}
+	d.shownIndices[it.Index] = !d.shownIndices[it.Index]
+	d.refreshLocked()
+
+}
 func (d *LineChartDrawer) Object() fyne.CanvasObject { return d.root }
 
 // InvalidateLabelCache should be called when font metrics affecting label width change,
@@ -316,6 +336,9 @@ func (d *LineChartDrawer) trimLocked() {
 	d.times = d.times[start:]
 
 	for j := range d.values {
+		if !d.variableShown(j) {
+			continue
+		}
 		// normal case: each series has same length as times
 		if len(d.values[j]) >= points {
 			d.values[j] = d.values[j][start:]
@@ -332,6 +355,10 @@ func (d *LineChartDrawer) trimLocked() {
 func (d *LineChartDrawer) pointCountSafeLocked() int {
 	pc := len(d.times)
 	for j := 0; j < d.vars; j++ {
+		if !d.variableShown(j) {
+			continue
+		}
+
 		if j >= len(d.values) {
 			return 0
 		}
@@ -416,6 +443,10 @@ func (d *LineChartDrawer) refreshLocked() {
 	if n > 0 {
 		firstSet := false
 		for j := 0; j < d.vars && !firstSet; j++ {
+			if !d.variableShown(j) {
+				continue
+			}
+
 			if j < len(d.values) && len(d.values[j]) >= n && n > 0 {
 				minV, maxV = d.values[j][0], d.values[j][0]
 				firstSet = true
@@ -424,6 +455,10 @@ func (d *LineChartDrawer) refreshLocked() {
 
 		if firstSet {
 			for j := 0; j < d.vars; j++ {
+				if !d.variableShown(j) {
+					continue
+				}
+
 				if j >= len(d.values) {
 					break
 				}
@@ -481,6 +516,10 @@ func (d *LineChartDrawer) refreshLocked() {
 	// -----------------------
 	if n >= 2 {
 		for j := 0; j < d.vars; j++ {
+			if !d.variableShown(j) {
+				continue
+			}
+
 			if j >= len(d.values) {
 				break
 			}
@@ -505,6 +544,10 @@ func (d *LineChartDrawer) refreshLocked() {
 	// -----------------------
 	if d.opts.ShowMarkers && n > 0 {
 		for j := 0; j < d.vars; j++ {
+			if !d.variableShown(j) {
+				continue
+			}
+
 			if j >= len(d.values) {
 				break
 			}

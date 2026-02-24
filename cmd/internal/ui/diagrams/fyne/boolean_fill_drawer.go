@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
 // BoolFillDrawer fills its area with a color based on the last boolean value.
@@ -53,5 +54,8 @@ func (d *BoolFillDrawer) Push(_ time.Time, val any) {
 }
 
 func (d *BoolFillDrawer) Redraw() {
+
+}
+func (d *BoolFillDrawer) ToggleItem(it *uport.LegendItem) {
 
 }

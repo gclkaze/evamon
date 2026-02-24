@@ -10,7 +10,6 @@ import (
 	"fyne.io/fyne/v2/container"
 	fynelayout "fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
-	"fyne.io/fyne/v2/widget"
 	"golang.org/x/image/colornames"
 
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
@@ -20,7 +19,7 @@ import (
 // If len(items) <= 1 it returns an empty (hidden) container.
 // If onClick is nil -> items are non-interactive labels.
 // If onClick is non-nil -> items are clickable "label-like buttons" that call onClick(key).
-func newDiagramLegend(items []port.LegendItem, perRow int, onClick func(key string)) fyne.CanvasObject {
+func newDiagramLegend(items []port.LegendItem, perRow int, onClick func(item *port.LegendItem)) fyne.CanvasObject {
 	if perRow <= 0 {
 		perRow = 6
 	}
@@ -33,6 +32,7 @@ func newDiagramLegend(items []port.LegendItem, perRow int, onClick func(key stri
 	}*/
 
 	// Build rows
+	addFilter := len(items) > 1
 	for i := 0; i < len(items); i += perRow {
 		end := i + perRow
 		if end > len(items) {
@@ -42,7 +42,7 @@ func newDiagramLegend(items []port.LegendItem, perRow int, onClick func(key stri
 		row := container.NewHBox()
 
 		for _, it := range items[i:end] {
-			row.Add(legendEntry(it, onClick))
+			row.Add(legendEntry(it, onClick, addFilter))
 			// fixed-ish gap between entries (spacer expands; keep small by using a tiny empty canvas object)
 			row.Add(fixedHGap(5))
 		}
@@ -53,52 +53,89 @@ func newDiagramLegend(items []port.LegendItem, perRow int, onClick func(key stri
 	return root
 }
 
-func legendEntry(it port.LegendItem, onClick func(key string)) fyne.CanvasObject {
+func legendEntry(it port.LegendItem, onClick func(it *port.LegendItem), addFilter bool) fyne.CanvasObject {
+	size := float32(12)
 
-	swatchBox := makeSwatch(parseColor(it.Color), 12)
+	c := parseColor(it.Color)
+	swatchBox, swatchInner := makeSwatchWithInner(c, size)
 
-	labelText := it.Label
-	if strings.TrimSpace(labelText) == "" {
-		labelText = it.Key
+	labelText := strings.TrimSpace(it.Label)
+	if labelText == "" {
+		labelText = strings.TrimSpace(it.Key)
+	}
+	if labelText == "" {
+		labelText = "?"
 	}
 
-	var textObj fyne.CanvasObject
-	if onClick == nil {
-		textObj = widget.NewLabel(labelText)
-	} else {
-		btn := widget.NewButton(labelText, func() { onClick(it.Key) })
-		btn.Importance = widget.LowImportance
-		btn.Alignment = widget.ButtonAlignLeading
-		textObj = btn
-	}
+	active := true
+	inactiveText := theme.DisabledColor()
 
-	// Center both items vertically inside the row height
+	txt := canvas.NewText(labelText, theme.ForegroundColor())
+	txt.TextSize = 12
+	txt.Alignment = fyne.TextAlignLeading
+	txt.Resize(txt.MinSize())
+
+	overlay := NewTapOverlay(func() {
+		if !addFilter {
+			return
+		}
+		active = !active
+		if active {
+			txt.Color = theme.ForegroundColor()
+			//	setSwatchAlpha(swatchInner, 255)
+		} else {
+			txt.Color = inactiveText
+			//	setSwatchAlpha(swatchInner, 110)
+		}
+		txt.Refresh()
+		swatchInner.Refresh()
+
+		if onClick != nil {
+			item := it
+			onClick(&item)
+		}
+	})
+
+	// Max overlays the transparent tappable widget on top of the text
+	clickableText := container.NewMax(txt, overlay)
+
+	// Important: give overlay same size as text
+	overlay.Resize(txt.MinSize())
+
 	return container.NewHBox(
 		container.NewCenter(swatchBox),
-
-		container.NewCenter(textObj),
+		fixedHGap(3),
+		clickableText,
 	)
 }
 
-func makeSwatch(c color.Color, size float32) fyne.CanvasObject {
-	// Outer border (dark gray)
+func makeSwatchWithInner(c color.Color, size float32) (fyne.CanvasObject, *canvas.Rectangle) {
 	border := canvas.NewRectangle(color.NRGBA{R: 160, G: 160, B: 160, A: 255})
 	border.CornerRadius = 2
 
-	// Inner colored square
 	inner := canvas.NewRectangle(c)
 	inner.CornerRadius = 2
 
-	// Padding inside border
 	padding := float32(1)
 
 	content := container.NewWithoutLayout(border, inner)
-
 	border.Resize(fyne.NewSize(size, size))
 	inner.Resize(fyne.NewSize(size-2*padding, size-2*padding))
 	inner.Move(fyne.NewPos(padding, padding))
 
-	return container.NewGridWrap(fyne.NewSize(size, size), content)
+	box := container.NewGridWrap(fyne.NewSize(size, size), content)
+	return box, inner
+}
+
+func setSwatchAlpha(r *canvas.Rectangle, a uint8) {
+	// r.FillColor might not be NRGBA; convert safely
+	rc, gc, bc, _ := r.FillColor.RGBA()
+	r.FillColor = color.NRGBA{
+		R: uint8(rc >> 8),
+		G: uint8(gc >> 8),
+		B: uint8(bc >> 8),
+		A: a,
+	}
 }
 
 func fixedHGap(px float32) fyne.CanvasObject {

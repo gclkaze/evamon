@@ -283,13 +283,14 @@ func (b *Builder) buildBarDiagram(jobID string, d *vp.Diagram) (uport.UIObject, 
 
 	vars := b.collectVariables(d)
 	theItems := variableStylesToLegendItems(vars)
-	legendObj := b.Layout.DiagramLegend(theItems, nil)
-	parts = append(parts, legendObj)
+	//parts = append(parts, legendObj)
 
+	var w dport.DiagramWidget
+	var err error
 	for si := range d.Setup {
 		s := d.Setup[si]
 
-		w, err := window.CreateBarchartDrawer(b.Factory, &s, si, b.MinChartWidth, b.MinChartHeight, b.DefaultMaxPoints)
+		w, err = window.CreateBarchartDrawer(b.Factory, &s, si, b.MinChartWidth, b.MinChartHeight, b.DefaultMaxPoints)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -300,6 +301,14 @@ func (b *Builder) buildBarDiagram(jobID string, d *vp.Diagram) (uport.UIObject, 
 			Sink:     w,
 		})
 	}
+	legendObj := b.Layout.DiagramLegend(theItems, func(it *port.LegendItem) {
+		if len(theItems) == 1 {
+			return
+		}
+		w.ToggleItem(it)
+	})
+
+	parts = append([]uport.UIObject{legendObj}, parts...)
 
 	return b.Layout.VBox(parts...), bindings, nil
 }
@@ -390,11 +399,12 @@ func lookupColor(s string) color.Color {
 func variableStylesToLegendItems(vars []dport.VariableStyle) []port.LegendItem {
 	out := make([]port.LegendItem, 0, len(vars))
 
-	for _, v := range vars {
+	for i, v := range vars {
 		out = append(out, port.LegendItem{
 			Key:   v.VariableName, // stable id
 			Label: v.VariableName, // you can change if you later add display name
 			Color: v.VarColorText, // convert color.Color → string
+			Index: i,
 		})
 	}
 
@@ -407,13 +417,14 @@ func (b *Builder) buildLineDiagram(jobID string, d *vp.Diagram) (uport.UIObject,
 
 	vars := b.collectVariables(d)
 	theItems := variableStylesToLegendItems(vars)
-	legendObj := b.Layout.DiagramLegend(theItems, nil)
-	parts = append(parts, legendObj)
-
+	//legendObj := b.Layout.DiagramLegend(theItems, nil)
+	//parts = append(parts, legendObj)
+	var w dport.DiagramWidget
+	var err error
 	for si := range d.Setup {
 		s := d.Setup[si]
 
-		w, err := window.CreateLinechartDrawer(b.Factory, &s, si, b.MinChartWidth, b.MinChartHeight, b.DefaultMaxPoints)
+		w, err = window.CreateLinechartDrawer(b.Factory, &s, si, b.MinChartWidth, b.MinChartHeight, b.DefaultMaxPoints)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -425,6 +436,14 @@ func (b *Builder) buildLineDiagram(jobID string, d *vp.Diagram) (uport.UIObject,
 			Sink:     w,
 		})
 	}
+
+	legendObj := b.Layout.DiagramLegend(theItems, func(it *port.LegendItem) {
+		if len(theItems) == 1 {
+			return
+		}
+		w.ToggleItem(it)
+	})
+	parts = append([]uport.UIObject{legendObj}, parts...)
 
 	return b.Layout.VBox(parts...), bindings, nil
 }
