@@ -31,6 +31,8 @@ type LineChartWidget struct {
 
 	minWidth  float32
 	minHeight float32
+
+	chart *fyne.Container
 }
 
 func NewLineChartWidget(drawer *LineChartDrawer, title, description string, width, height float32) *LineChartWidget {
@@ -115,10 +117,22 @@ type LineChartWidgetRenderer struct {
 	objects []fyne.CanvasObject
 }
 
-func (r *LineChartWidgetRenderer) Layout(size fyne.Size) {
+func (r *LineChartWidgetRenderer) Layou2t(size fyne.Size) {
 	// Resize drawer to fill entire widget
 	r.widget.drawer.Resize(size.Width, size.Height)
 	r.widget.drawer.Object().Resize(size)
+}
+
+func (r *LineChartWidgetRenderer) Layout(size fyne.Size) {
+	// size the card/root
+	r.widget.root.Resize(size)
+
+	// VERY IMPORTANT: ensure the drawer's root canvas object is also resized,
+	// otherwise drawer.root.Size() stays {0,0}.
+	r.widget.drawer.Object().Resize(size)
+
+	// and inform the drawer so it can redraw using this size
+	r.widget.drawer.Resize(size.Width, size.Height)
 }
 
 func (r *LineChartWidgetRenderer) MinSize() fyne.Size {

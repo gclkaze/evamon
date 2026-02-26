@@ -112,15 +112,16 @@ func NewLineChartDrawer(opts port.LineChartOptions, initialWidth, initialHeight 
 		d.mu.Lock()
 		defer d.mu.Unlock()
 
-		if w <= 0 || h <= 0 {
-			return image.NewRGBA(image.Rect(0, 0, 1, 1))
+		if w <= 1 || h <= 1 {
+			return image.NewRGBA(image.Rect(0, 0, 2, 2))
 		}
 
-		// Ensure backing buffer exists and matches requested size.
 		if d.img == nil || d.img.Bounds().Dx() != w || d.img.Bounds().Dy() != h {
 			d.img = image.NewRGBA(image.Rect(0, 0, w, h))
-			fillRGBA(d.img, d.opts.Background)
 		}
+
+		// Draw the entire frame *here* every time Fyne asks for it.
+		d.drawLocked(w, h)
 
 		return d.img
 	})
@@ -170,6 +171,172 @@ func NewLineChartDrawer(opts port.LineChartOptions, initialWidth, initialHeight 
 	d.refreshLocked()
 
 	return d
+}
+
+func (d *LineChartDrawer) drawLocked(w, h int) {
+	// Clear every frame
+	fillRGBA(d.img, d.opts.Background)
+
+	plotX0 := d.opts.PadL
+	plotY0 := d.opts.PadT
+	plotW := float32(w) - d.opts.PadL - d.opts.PadR
+	plotH := float32(h) - d.opts.PadT - d.opts.PadB
+
+	if plotW < 10 {
+		plotW = 10
+	}
+	if plotH < 10 {
+		plotH = 10
+	}
+
+	// Grid / Axes
+	if d.opts.ShowGrid {
+		drawGrid(d.img, plotX0, plotY0, plotW, plotH, d.opts.Grid, d.opts.GridStroke, d.opts.GridX, d.opts.GridY)
+	}
+	if d.opts.ShowAxes {
+		drawAxes(d.img, plotX0, plotY0, plotW, plotH, d.opts.Axis, d.opts.AxisStroke)
+	}
+
+	// -----------------------
+	// Scale across ALL visible series
+	// -----------------------
+	n := d.pointCountSafeLocked()
+
+	minV, maxV := 0, 0
+	if n > 0 {
+		firstSet := false
+		for j := 0; j < d.vars && !firstSet; j++ {
+			if !d.variableShown(j) {
+				continue
+			}
+			if j < len(d.values) && len(d.values[j]) >= n {
+				minV, maxV = d.values[j][0], d.values[j][0]
+				firstSet = true
+			}
+		}
+
+		if firstSet {
+			for j := 0; j < d.vars; j++ {
+				if !d.variableShown(j) {
+					continue
+				}
+				if j >= len(d.values) {
+					break
+				}
+				series := d.values[j]
+				if len(series) < n {
+					continue
+				}
+				for i := 0; i < n; i++ {
+					v := series[i]
+					if v < minV {
+						minV = v
+					}
+					if v > maxV {
+						maxV = v
+					}
+				}
+			}
+
+			if minV == maxV {
+				minV--
+				maxV++
+			}
+
+			span := float64(maxV - minV)
+			pad := int(math.Ceil(span * d.opts.YPadRatio))
+			if pad < 1 {
+				pad = 1
+			}
+			minV -= pad
+			maxV += pad
+		}
+	}
+
+	d.minV, d.maxV = minV, maxV
+
+	// -----------------------
+	// Mapping
+	// -----------------------
+	toX := func(i int) float32 {
+		if n <= 1 {
+			return plotX0 + plotW/2
+		}
+		return plotX0 + (float32(i)/float32(n-1))*plotW
+	}
+	toY := func(v int) float32 {
+		if maxV == minV {
+			return plotY0 + plotH/2
+		}
+		t := float64(v-minV) / float64(maxV-minV)
+		return plotY0 + (1-float32(t))*plotH
+	}
+
+	// -----------------------
+	// Draw lines
+	// -----------------------
+	if n >= 2 {
+		for j := 0; j < d.vars; j++ {
+			if !d.variableShown(j) {
+				continue
+			}
+			if j >= len(d.values) {
+				break
+			}
+			series := d.values[j]
+			if len(series) < n {
+				continue
+			}
+			c := d.seriesColor(j)
+
+			for i := 0; i < n-1; i++ {
+				drawLineAA(d.img,
+					toX(i), toY(series[i]),
+					toX(i+1), toY(series[i+1]),
+					c, d.opts.LineStroke,
+				)
+			}
+		}
+	}
+
+	// -----------------------
+	// Draw markers
+	// -----------------------
+	if d.opts.ShowMarkers && n > 0 {
+		for j := 0; j < d.vars; j++ {
+			if !d.variableShown(j) {
+				continue
+			}
+			if j >= len(d.values) {
+				break
+			}
+			series := d.values[j]
+			if len(series) < n {
+				continue
+			}
+			c := d.seriesColor(j)
+
+			for i := 0; i < n; i++ {
+				drawCircleAA(d.img, toX(i), toY(series[i]), d.opts.MarkerRadius, c)
+			}
+		}
+	}
+
+	// -----------------------
+	// Labels (overlay objects)
+	// -----------------------
+	if d.opts.ShowAxes {
+		d.setLabelsLocked(plotX0, plotY0, plotW, plotH)
+	} else {
+		d.yMinT.Hide()
+		d.yMaxT.Hide()
+		d.xMinT.Hide()
+		d.xMaxT.Hide()
+		for i := range d.xTicks {
+			d.xTicks[i].Hide()
+			d.xTickLines[i].Hide()
+		}
+	}
 }
 
 func (d *LineChartDrawer) variableShown(i int) bool {
@@ -400,185 +567,7 @@ func (d *LineChartDrawer) sampleTimeLabelWidthLocked() float32 {
 }
 
 func (d *LineChartDrawer) refreshLocked() {
-	w := int(d.size.Width)
-	h := int(d.size.Height)
-	if w <= 1 || h <= 1 {
-		return
-	}
-
-	// Ensure backing buffer exists and matches size
-	if d.img == nil || d.img.Bounds().Dx() != w || d.img.Bounds().Dy() != h {
-		d.img = image.NewRGBA(image.Rect(0, 0, w, h))
-	}
-
-	// Clear background ONCE at the start
-	fillRGBA(d.img, d.opts.Background)
-
-	plotX0 := d.opts.PadL
-	plotY0 := d.opts.PadT
-	plotW := float32(w) - d.opts.PadL - d.opts.PadR
-	plotH := float32(h) - d.opts.PadT - d.opts.PadB
-
-	if plotW < 10 {
-		plotW = 10
-	}
-	if plotH < 10 {
-		plotH = 10
-	}
-
-	// Draw grid/axes
-	if d.opts.ShowGrid {
-		drawGrid(d.img, plotX0, plotY0, plotW, plotH, d.opts.Grid, d.opts.GridStroke, d.opts.GridX, d.opts.GridY)
-	}
-	if d.opts.ShowAxes {
-		drawAxes(d.img, plotX0, plotY0, plotW, plotH, d.opts.Axis, d.opts.AxisStroke)
-	}
-
-	// -----------------------
-	// Scale data across ALL series
-	// -----------------------
-	n := d.pointCountSafeLocked()
-
-	minV, maxV := 0, 0
-	if n > 0 {
-		firstSet := false
-		for j := 0; j < d.vars && !firstSet; j++ {
-			if !d.variableShown(j) {
-				continue
-			}
-
-			if j < len(d.values) && len(d.values[j]) >= n && n > 0 {
-				minV, maxV = d.values[j][0], d.values[j][0]
-				firstSet = true
-			}
-		}
-
-		if firstSet {
-			for j := 0; j < d.vars; j++ {
-				if !d.variableShown(j) {
-					continue
-				}
-
-				if j >= len(d.values) {
-					break
-				}
-				series := d.values[j]
-				if len(series) < n {
-					continue
-				}
-				for i := 0; i < n; i++ {
-					v := series[i]
-					if v < minV {
-						minV = v
-					}
-					if v > maxV {
-						maxV = v
-					}
-				}
-			}
-
-			if minV == maxV {
-				minV--
-				maxV++
-			}
-
-			span := float64(maxV - minV)
-			pad := int(math.Ceil(span * d.opts.YPadRatio))
-			if pad < 1 {
-				pad = 1
-			}
-			minV -= pad
-			maxV += pad
-		}
-	}
-
-	d.minV, d.maxV = minV, maxV
-
-	// -----------------------
-	// Plot mapping (shared X across series)
-	// -----------------------
-	toX := func(i int) float32 {
-		if n <= 1 {
-			return plotX0 + plotW/2
-		}
-		return plotX0 + (float32(i)/float32(n-1))*plotW
-	}
-	toY := func(v int) float32 {
-		if maxV == minV {
-			return plotY0 + plotH/2
-		}
-		t := float64(v-minV) / float64(maxV-minV)
-		return plotY0 + (1-float32(t))*plotH
-	}
-
-	// -----------------------
-	// Draw lines (one per series)
-	// -----------------------
-	if n >= 2 {
-		for j := 0; j < d.vars; j++ {
-			if !d.variableShown(j) {
-				continue
-			}
-
-			if j >= len(d.values) {
-				break
-			}
-			series := d.values[j]
-			if len(series) < n {
-				continue
-			}
-			c := d.seriesColor(j)
-
-			for i := 0; i < n-1; i++ {
-				drawLineAA(d.img,
-					toX(i), toY(series[i]),
-					toX(i+1), toY(series[i+1]),
-					c, d.opts.LineStroke,
-				)
-			}
-		}
-	}
-
-	// -----------------------
-	// Draw markers (series-colored)
-	// -----------------------
-	if d.opts.ShowMarkers && n > 0 {
-		for j := 0; j < d.vars; j++ {
-			if !d.variableShown(j) {
-				continue
-			}
-
-			if j >= len(d.values) {
-				break
-			}
-			series := d.values[j]
-			if len(series) < n {
-				continue
-			}
-			c := d.seriesColor(j)
-
-			for i := 0; i < n; i++ {
-				drawCircleAA(d.img, toX(i), toY(series[i]), d.opts.MarkerRadius, c)
-			}
-		}
-	}
-
-	// Refresh raster to paint current d.img
 	d.raster.Refresh()
-
-	// Update labels
-	if d.opts.ShowAxes {
-		d.setLabelsLocked(plotX0, plotY0, plotW, plotH)
-	} else {
-		d.yMinT.Hide()
-		d.yMaxT.Hide()
-		d.xMinT.Hide()
-		d.xMaxT.Hide()
-		for i := range d.xTicks {
-			d.xTicks[i].Hide()
-			d.xTickLines[i].Hide()
-		}
-	}
 }
 
 func (d *LineChartDrawer) setLabelsLocked(plotX0, plotY0, plotW, plotH float32) {
@@ -602,6 +591,12 @@ func (d *LineChartDrawer) setLabelsLocked(plotX0, plotY0, plotW, plotH float32) 
 	d.yMinT.Refresh()
 
 	n := d.pointCountSafeLocked()
+
+	/*	fmt.Printf("[LC] times=%d n=%d\n", len(d.times), n)
+		for j := 0; j < d.vars && j < len(d.values); j++ {
+			fmt.Printf("  [LC] series[%d] shown=%v len=%d\n", j, d.variableShown(j), len(d.values[j]))
+		}*/
+
 	d.updateXTickLabelsLocked(plotX0, plotY0, plotW, plotH, n)
 }
 
