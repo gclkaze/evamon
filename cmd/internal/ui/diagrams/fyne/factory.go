@@ -51,7 +51,16 @@ func (f *Factory) NewBoolFill(opts port.BoolFillOptions, title string, descripti
 }
 
 func (f *Factory) NewBarChart(opts port.BarChartOptions, title string, description string, width, height float32) port.DiagramWidget {
-	drawer := NewBarChartDrawer(opts.MaxPoints, opts.Width, opts.Height, opts.Variables, opts.Background)
+	seriesCount := len(opts.Variables)
+	if seriesCount <= 0 {
+		seriesCount = 1
+	}
+
+	src := data.NewMultiSeriesRing(
+		opts.MaxPoints, // history size
+		seriesCount,    // number of variables
+	)
+	drawer := NewBarChartDrawer(src, opts.Width, opts.Height, opts.Variables, opts.Background)
 	return NewBarChartWidget(drawer, title, description, width, height) // the resize-aware wrapper
 }
 

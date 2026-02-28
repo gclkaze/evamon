@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"github.com/gclkaze/evamon/cmd/internal/ui/data"
 	"github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
@@ -24,8 +25,7 @@ type BarChartDrawer struct {
 
 	//values []int
 
-	values [][]int
-	times  []time.Time
+	data data.IMultiSeriesData
 
 	//barColor color.Color
 	//barColor []color.Color
@@ -47,11 +47,7 @@ type BarChartDrawer struct {
 func (d *BarChartDrawer) Redraw() {
 	d.redrawWithAxis()
 }
-func NewBarChartDrawer(maxPoints int, width, height float32, variables []port.VariableStyle, bgColor color.Color) *BarChartDrawer {
-	if maxPoints <= 0 {
-		maxPoints = 50
-	}
-
+func NewBarChartDrawer(src data.IMultiSeriesData, width, height float32, variables []port.VariableStyle, bgColor color.Color) *BarChartDrawer {
 	if width <= 0 {
 		width = 600
 	}
@@ -60,25 +56,35 @@ func NewBarChartDrawer(maxPoints int, width, height float32, variables []port.Va
 	}
 
 	d := &BarChartDrawer{
-		maxPoints: maxPoints,
-		width:     width,
-		height:    height,
-		//barColor:  barColor,
+		width:          width,
+		height:         height,
 		bgColor:        bgColor,
 		xLabelTextSize: 11,
 		variables:      variables,
+		data:           src,
 	}
+
+	// vars: prefer data source
+	d.vars = 1
+	if d.data != nil && d.data.Vars() > 0 {
+		d.vars = d.data.Vars()
+	} else {
+		d.vars = len(variables)
+		if d.vars <= 0 {
+			d.vars = 1
+		}
+	}
+
+	// shownIndices AFTER vars
+	d.shownIndices = make(map[int]bool, d.vars)
+	for i := 0; i < d.vars; i++ {
+		d.shownIndices[i] = true
+	}
+
 	d.root = container.NewWithoutLayout()
 	d.root.Resize(fyne.NewSize(width, height))
 
-	d.vars = len(variables)
-	d.values = make([][]int, d.vars)
-	d.initRectangles(len(variables))
-
-	d.shownIndices = map[int]bool{}
-	for i := range d.vars {
-		d.shownIndices[i] = true
-	}
+	d.initRectangles(d.vars)
 
 	return d
 }
@@ -145,9 +151,11 @@ func (d *BarChartDrawer) Push(at time.Time, val any) {
 
 func (d *BarChartDrawer) handleMonoVariableInput(at time.Time, val any) {
 	UI(func() {
+		if d.data == nil {
+			return
+		}
 		v := 0
-		theVal := val
-		switch x := theVal.(type) {
+		switch x := val.(type) {
 		case int:
 			v = x
 		case float64:
@@ -157,78 +165,47 @@ func (d *BarChartDrawer) handleMonoVariableInput(at time.Time, val any) {
 		default:
 			return
 		}
-
 		if v < 0 {
 			v = 0
 		}
 
-		d.values[0] = append(d.values[0], v)
-		d.times = append(d.times, at)
-
-		d.trim()
-
+		d.data.Append(at, []int{v})
 		d.redrawWithAxis()
 	})
 }
-
 func (d *BarChartDrawer) handleMultiVariableInput(at time.Time, nums *[]int) {
 	UI(func() {
-		if len(*nums) != d.vars {
+		if d.data == nil || len(*nums) != d.vars {
 			return
 		}
-
-		// append timestamp ONCE per group
-		d.times = append(d.times, at)
-
-		// append one value per series
-		for j := 0; j < d.vars; j++ {
-			v := (*nums)[j]
-			if v < 0 {
-				v = 0
-			}
-			d.values[j] = append(d.values[j], v)
-		}
-
-		d.trim()
+		d.data.Append(at, *nums)
 		d.redrawWithAxis()
 	})
 }
 
-func (d *BarChartDrawer) trim() {
-	points := len(d.times)
-	if points <= d.maxPoints {
-		return
-	}
-
-	start := points - d.maxPoints
-	d.times = d.times[start:]
-
-	for j := range d.values {
-		if len(d.values[j]) > start { // ensure slice start is valid
-			d.values[j] = d.values[j][start:]
-		} else {
-			// If something went out of sync, keep it empty rather than panicking
-			d.values[j] = nil
-		}
-	}
-}
-func (d *BarChartDrawer) getMaxValue() int {
+func (d *BarChartDrawer) getMaxValueFromSnapshot(values [][]int, n int) int {
 	maxV := 0
-	for i := range d.values {
-		if !d.variableShown(i) {
+	for j := 0; j < d.vars; j++ {
+		if !d.variableShown(j) || j >= len(values) || len(values[j]) < n {
 			continue
 		}
-		for j := range d.values[i] {
-			if maxV < d.values[i][j] {
-				maxV = d.values[i][j]
+		for i := 0; i < n; i++ {
+			if values[j][i] > maxV {
+				maxV = values[j][i]
 			}
 		}
 	}
 	return maxV
 }
-
 func (d *BarChartDrawer) variableShown(i int) bool {
-	return d.shownIndices[i]
+	if d.shownIndices == nil {
+		return true
+	}
+	v, ok := d.shownIndices[i]
+	if !ok {
+		return true
+	}
+	return v
 }
 
 func (d *BarChartDrawer) ToggleItem(it *uport.LegendItem) {
@@ -240,66 +217,7 @@ func (d *BarChartDrawer) ToggleItem(it *uport.LegendItem) {
 	d.Redraw()
 }
 
-func (d *BarChartDrawer) drawRects2(plotY1, plotH, plotX0, slotW float32, yMin, yMax float64) {
-	seriesCount := d.vars
-	if seriesCount == 0 {
-		return
-	}
-
-	// pointCount must be valid for *all* series
-	pointCount := d.pointCountSafe()
-	for j := 0; j < seriesCount; j++ {
-		if !d.variableShown(j) {
-			continue
-		}
-		if j >= len(d.values) { // extra safety if slices not initialized as expected
-			return
-		}
-		if len(d.values[j]) < pointCount {
-			pointCount = len(d.values[j])
-		}
-	}
-	if pointCount == 0 {
-		return
-	}
-
-	groupW := slotW
-	innerSlotW := groupW / float32(seriesCount)
-	barW := innerSlotW * 0.8
-
-	for i := 0; i < pointCount; i++ {
-		for j := 0; j < seriesCount; j++ {
-			if !d.variableShown(j) {
-				continue
-			}
-
-			// now safe: i < len(d.values[j]) and i < len(d.times)
-			val := float64(d.values[j][i])
-
-			frac := float32((val - yMin) / (yMax - yMin))
-			frac = clamp01(frac)
-
-			bh := frac * plotH
-			if bh < 1 {
-				bh = 1
-			}
-
-			x := plotX0 +
-				float32(i)*groupW +
-				float32(j)*innerSlotW +
-				(innerSlotW-barW)/2
-
-			y := plotY1 - bh
-
-			r := canvas.NewRectangle(d.variables[j].VarColor)
-			r.Move(fyne.NewPos(x, y))
-			r.Resize(fyne.NewSize(barW, bh))
-			d.root.Add(r)
-		}
-	}
-}
-
-func (d *BarChartDrawer) drawRects(plotY1, plotH, plotX0, slotW float32, yMin, yMax float64) {
+func (d *BarChartDrawer) drawRectsFromSnapshot(plotY1, plotH, plotX0, slotW float32, yMin, yMax float64, values [][]int, pointCount int) {
 	if d.vars == 0 {
 		return
 	}
@@ -317,7 +235,7 @@ func (d *BarChartDrawer) drawRects(plotY1, plotH, plotX0, slotW float32, yMin, y
 	}
 
 	// Point count must be safe for what we're drawing (visible series + times)
-	pointCount := d.pointCountSafe()
+	//pointCount := d.pointCountSafeFromSnapshot(len(times), values)
 	if pointCount == 0 {
 		return
 	}
@@ -332,11 +250,11 @@ func (d *BarChartDrawer) drawRects(plotY1, plotH, plotX0, slotW float32, yMin, y
 	for i := 0; i < pointCount; i++ {
 		for visIdx, j := range visible {
 			// Safety: ensure we can read this point for this series
-			if j >= len(d.values) || i >= len(d.values[j]) {
+			if j >= len(values) || i >= len(values[j]) {
 				continue
 			}
 
-			val := float64(d.values[j][i])
+			val := float64(values[j][i])
 			frac := float32((val - yMin) / (yMax - yMin))
 			frac = clamp01(frac)
 
@@ -398,19 +316,35 @@ type niceTicks struct {
 // --- refactored entrypoint ---
 
 func (d *BarChartDrawer) redrawWithAxis() {
+	// 1) Size
 	w, h, ok := d.readRootSize()
 	if !ok {
 		return
 	}
 
+	// 2) Keep background, clear dynamic objects
 	d.prepareBackground(w, h)
 
-	pointCount := len(d.times)
-	if pointCount == 0 {
+	// 3) Data snapshot
+	if d.data == nil {
+		d.root.Refresh()
+		return
+	}
+	times, values := d.data.ReadWindow(0, 0) // copies
+
+	// 4) Safe point count
+	n := d.pointCountSafeFromSnapshot(len(times), values)
+	if n <= 0 {
 		d.root.Refresh()
 		return
 	}
 
+	// Make sure times matches n (defensive)
+	if n < len(times) {
+		times = times[:n]
+	}
+
+	// 5) Style + plot area
 	style := d.defaultChartStyle()
 	plot, ok := d.computePlotArea(w, h, style)
 	if !ok {
@@ -418,16 +352,24 @@ func (d *BarChartDrawer) redrawWithAxis() {
 		return
 	}
 
-	ys := d.computeYScale(6)
+	// 6) Y scale (based on visible series)
+	ys := d.computeYScaleFromSnapshot(6, values, n)
 
+	// 7) Axes + Y grid/labels
 	d.drawAxes(plot, style)
 	d.drawYGridAndLabels(plot, style, ys)
 
-	slotW := plot.w / float32(pointCount)
-	d.drawRects(plot.y1, plot.h, plot.x0, slotW, ys.min, ys.max)
+	// 8) Bars
+	slotW := plot.w / float32(n)
+	if slotW < 1 {
+		slotW = 1
+	}
+	d.drawRectsFromSnapshot(plot.y1, plot.h, plot.x0, slotW, ys.min, ys.max, values, n)
 
-	d.drawXLabels(plot, style, slotW)
+	// 9) X labels
+	d.drawXLabelsFromTimes(plot, style, slotW, times)
 
+	// 10) Refresh
 	d.root.Refresh()
 }
 
@@ -482,8 +424,8 @@ func (d *BarChartDrawer) computePlotArea(w, h float32, s chartStyle) (plotArea, 
 	return plot, true
 }
 
-func (d *BarChartDrawer) computeYScale(targetTicks int) yScale {
-	maxV := d.getMaxValue()
+func (d *BarChartDrawer) computeYScaleFromSnapshot(targetTicks int, values [][]int, n int) yScale {
+	maxV := d.getMaxValueFromSnapshot(values, n)
 	if maxV <= 0 {
 		maxV = 1
 	}
@@ -555,15 +497,15 @@ func (d *BarChartDrawer) drawYLabel(p plotArea, s chartStyle, y float32, tv floa
 	d.root.Add(lbl)
 }
 
-func (d *BarChartDrawer) drawXLabels(p plotArea, s chartStyle, slotW float32) {
-	pointCount := len(d.times)
+func (d *BarChartDrawer) drawXLabelsFromTimes(p plotArea, s chartStyle, slotW float32, times []time.Time) {
+	pointCount := len(times)
 	if pointCount == 0 {
 		return
 	}
 
 	if pointCount == 1 {
 		cx := p.x0 + p.w/2
-		d.drawSingleXLabel(cx, p.y1, s, d.times[0])
+		d.drawSingleXLabel(cx, p.y1, s, times[0])
 		return
 	}
 
@@ -586,7 +528,7 @@ func (d *BarChartDrawer) drawXLabels(p plotArea, s chartStyle, slotW float32) {
 		}
 
 		cx := p.x0 + (float32(idx)+0.5)*slotW
-		d.drawSingleXLabel(cx, p.y1, s, d.times[idx])
+		d.drawSingleXLabel(cx, p.y1, s, times[idx])
 	}
 }
 
@@ -644,18 +586,20 @@ func (d *BarChartDrawer) drawSingleXLabel(cx, axisY float32, s chartStyle, t tim
 	xTick.Position2 = fyne.NewPos(cx, axisY+4)
 	d.root.Add(xTick)
 }
-func (d *BarChartDrawer) pointCountSafe() int {
-	pc := len(d.times)
+func (d *BarChartDrawer) pointCountSafeFromSnapshot(n int, values [][]int) int {
+	if n <= 0 {
+		return 0
+	}
+	pc := n
 	for j := 0; j < d.vars; j++ {
 		if !d.variableShown(j) {
 			continue
 		}
-
-		if j >= len(d.values) {
+		if j >= len(values) {
 			return 0
 		}
-		if len(d.values[j]) < pc {
-			pc = len(d.values[j])
+		if len(values[j]) < pc {
+			pc = len(values[j])
 		}
 	}
 	if pc < 0 {
