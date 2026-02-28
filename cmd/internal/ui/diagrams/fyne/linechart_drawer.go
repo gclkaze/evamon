@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 
+	"github.com/gclkaze/evamon/cmd/internal/ui/data"
 	port "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
@@ -36,9 +37,8 @@ type LineChartDrawer struct {
 	raster *canvas.Raster
 
 	// Data
-	values [][]int
-	times  []time.Time
-	vars   int
+	data data.IMultiSeriesData
+	vars int
 
 	// Scale cache (used by labels)
 	minV int
@@ -104,7 +104,7 @@ func (m mapper) Y(v int) float32 {
 	return m.plot.y0 + (1-float32(t))*m.plot.h
 }
 
-func NewLineChartDrawer(opts port.LineChartOptions, initialWidth, initialHeight float32) *LineChartDrawer {
+func NewLineChartDrawer(src data.IMultiSeriesData, opts port.LineChartOptions, initialWidth, initialHeight float32) *LineChartDrawer {
 	opts = normalizeLineOpts(opts)
 
 	if initialWidth <= 0 {
@@ -121,17 +121,29 @@ func NewLineChartDrawer(opts port.LineChartOptions, initialWidth, initialHeight 
 		maxXTicks:      6,
 	}
 
-	d.vars = len(opts.Variables)
-	if d.vars <= 0 {
-		d.vars = 1
+	/*	d.vars = len(opts.Variables)
+		if d.vars <= 0 {
+			d.vars = 1
+		}*/
+
+	d.data = src
+	d.vars = 1
+	if d.data != nil && d.data.Vars() > 0 {
+		d.vars = d.data.Vars()
+	} else {
+		d.vars = len(opts.Variables)
+		if d.vars <= 0 {
+			d.vars = 1
+		}
 	}
 
+	// NOW init shownIndices
 	d.shownIndices = make(map[int]bool, d.vars)
 	for i := 0; i < d.vars; i++ {
 		d.shownIndices[i] = true
 	}
 
-	d.values = make([][]int, d.vars)
+	//d.values = make([][]int, d.vars)
 
 	// Raster draws the full frame inside the generator (robust across windows/backends).
 	d.raster = canvas.NewRaster(func(w, h int) image.Image {
@@ -253,8 +265,8 @@ func (d *LineChartDrawer) SetOptions(opts port.LineChartOptions) {
 	}
 	if newVars != d.vars {
 		d.vars = newVars
-		d.values = make([][]int, d.vars)
-		d.times = nil
+		//d.values = make([][]int, d.vars)
+		//d.times = nil
 		d.shownIndices = make(map[int]bool, d.vars)
 		for i := 0; i < d.vars; i++ {
 			d.shownIndices[i] = true
@@ -264,7 +276,7 @@ func (d *LineChartDrawer) SetOptions(opts port.LineChartOptions) {
 	d.opts = opts
 
 	// Keep max points trimming consistent.
-	d.trimLocked()
+	//d.trimLocked()
 
 	d.raster.Refresh()
 }
@@ -303,28 +315,22 @@ func (d *LineChartDrawer) Push(at time.Time, val any) {
 func (d *LineChartDrawer) handleMonoVariableInput(at time.Time, val any) {
 	UI(func() {
 		v, ok := anyToNonNegInt(val)
-		if !ok {
+		if !ok || d.data == nil {
 			return
 		}
 
-		d.mu.Lock()
-		d.appendMonoLocked(at, v)
-		d.mu.Unlock()
-
+		// append as 1-element slice
+		d.data.Append(at, []int{v})
 		d.raster.Refresh()
 	})
 }
 
 func (d *LineChartDrawer) handleMultiVariableInput(at time.Time, nums *[]int) {
 	UI(func() {
-		if len(*nums) != d.vars {
+		if d.data == nil || len(*nums) != d.vars {
 			return
 		}
-
-		d.mu.Lock()
-		d.appendMultiLocked(at, *nums)
-		d.mu.Unlock()
-
+		d.data.Append(at, *nums)
 		d.raster.Refresh()
 	})
 }
@@ -353,58 +359,21 @@ func anyToNonNegInt(val any) (int, bool) {
 	}
 }
 
-func (d *LineChartDrawer) appendMonoLocked(at time.Time, v int) {
-	d.values[0] = append(d.values[0], v)
-	d.times = append(d.times, at)
-	d.trimLocked()
-}
-
-func (d *LineChartDrawer) appendMultiLocked(at time.Time, nums []int) {
-	d.times = append(d.times, at)
-	for j := 0; j < d.vars; j++ {
-		v := nums[j]
-		if v < 0 {
-			v = 0
-		}
-		d.values[j] = append(d.values[j], v)
+func (d *LineChartDrawer) pointCountSafeFromSnapshot(n int, values [][]int) int {
+	if n <= 0 {
+		return 0
 	}
-	d.trimLocked()
-}
+	pc := n
 
-func (d *LineChartDrawer) trimLocked() {
-	points := len(d.times)
-	if points <= d.opts.MaxPoints {
-		return
-	}
-
-	start := points - d.opts.MaxPoints
-	d.times = d.times[start:]
-
-	for j := range d.values {
-		// keep trimming all series even if hidden, to keep times alignment robust
-		if len(d.values[j]) >= points {
-			d.values[j] = d.values[j][start:]
-			continue
-		}
-		// fallback safety
-		if len(d.values[j]) > d.opts.MaxPoints {
-			over := len(d.values[j]) - d.opts.MaxPoints
-			d.values[j] = d.values[j][over:]
-		}
-	}
-}
-
-func (d *LineChartDrawer) pointCountSafeLocked() int {
-	pc := len(d.times)
 	for j := 0; j < d.vars; j++ {
 		if !d.variableShown(j) {
 			continue
 		}
-		if j >= len(d.values) {
+		if j >= len(values) {
 			return 0
 		}
-		if len(d.values[j]) < pc {
-			pc = len(d.values[j])
+		if len(values[j]) < pc {
+			pc = len(values[j])
 		}
 	}
 	if pc < 0 {
@@ -444,19 +413,20 @@ func (d *LineChartDrawer) sampleTimeLabelWidthLocked() float32 {
 --------------------------- */
 
 func (d *LineChartDrawer) drawLocked(w, h int) {
-	f := d.computeFrameLocked(w, h)
+	times, values := d.data.ReadWindow(0, 0) // copies
+	f := d.computeFrameFromSnapshotLocked(w, h, times, values)
 
 	fillRGBA(d.img, d.opts.Background)
 	d.drawGridAxesLocked(f.plot)
 
 	m := mapper{plot: f.plot, n: f.n, minV: f.minV, maxV: f.maxV}
-	d.drawLinesLocked(f.n, m)
-	d.drawMarkersLocked(f.n, m)
+	d.drawLinesLocked(f.n, m, values)
+	d.drawMarkersLocked(f.n, m, values)
 
-	d.updateOverlayLocked(f.plot, f.n)
+	d.updateOverlayLocked(f.plot, f.n, times)
 }
 
-func (d *LineChartDrawer) computeFrameLocked(w, h int) frame {
+func (d *LineChartDrawer) computeFrameFromSnapshotLocked(w, h int, times []time.Time, values [][]int) frame {
 	plot := plotRect{
 		x0: d.opts.PadL,
 		y0: d.opts.PadT,
@@ -470,25 +440,25 @@ func (d *LineChartDrawer) computeFrameLocked(w, h int) frame {
 		plot.h = 10
 	}
 
-	n := d.pointCountSafeLocked()
-	minV, maxV := d.computeMinMaxLocked(n)
+	n := d.pointCountSafeFromSnapshot(len(times), values) // <-- key line
 
+	minV, maxV := d.computeMinMaxFromSnapshotLocked(n, values)
 	d.minV, d.maxV = minV, maxV
 
 	return frame{wpx: w, hpx: h, plot: plot, n: n, minV: minV, maxV: maxV}
 }
 
-func (d *LineChartDrawer) computeMinMaxLocked(n int) (minV, maxV int) {
+func (d *LineChartDrawer) computeMinMaxFromSnapshotLocked(n int, values [][]int) (minV, maxV int) {
 	if n <= 0 {
 		return 0, 0
 	}
 
 	seeded := false
 	for j := 0; j < d.vars && !seeded; j++ {
-		if !d.variableShown(j) || j >= len(d.values) || len(d.values[j]) < n {
+		if !d.variableShown(j) || j >= len(values) || len(values[j]) < n {
 			continue
 		}
-		minV, maxV = d.values[j][0], d.values[j][0]
+		minV, maxV = values[j][0], values[j][0]
 		seeded = true
 	}
 	if !seeded {
@@ -496,10 +466,10 @@ func (d *LineChartDrawer) computeMinMaxLocked(n int) (minV, maxV int) {
 	}
 
 	for j := 0; j < d.vars; j++ {
-		if !d.variableShown(j) || j >= len(d.values) || len(d.values[j]) < n {
+		if !d.variableShown(j) || j >= len(values) || len(values[j]) < n {
 			continue
 		}
-		series := d.values[j]
+		series := values[j]
 		for i := 0; i < n; i++ {
 			v := series[i]
 			if v < minV {
@@ -533,15 +503,15 @@ func (d *LineChartDrawer) drawGridAxesLocked(p plotRect) {
 	}
 }
 
-func (d *LineChartDrawer) drawLinesLocked(n int, m mapper) {
+func (d *LineChartDrawer) drawLinesLocked(n int, m mapper, values [][]int) {
 	if n < 2 {
 		return
 	}
 	for j := 0; j < d.vars; j++ {
-		if !d.variableShown(j) || j >= len(d.values) || len(d.values[j]) < n {
+		if !d.variableShown(j) || j >= len(values) || len(values[j]) < n {
 			continue
 		}
-		series := d.values[j]
+		series := values[j]
 		c := d.seriesColor(j)
 		for i := 0; i < n-1; i++ {
 			drawLineAA(d.img, m.X(i), m.Y(series[i]), m.X(i+1), m.Y(series[i+1]), c, d.opts.LineStroke)
@@ -549,15 +519,15 @@ func (d *LineChartDrawer) drawLinesLocked(n int, m mapper) {
 	}
 }
 
-func (d *LineChartDrawer) drawMarkersLocked(n int, m mapper) {
+func (d *LineChartDrawer) drawMarkersLocked(n int, m mapper, values [][]int) {
 	if !d.opts.ShowMarkers || n <= 0 {
 		return
 	}
 	for j := 0; j < d.vars; j++ {
-		if !d.variableShown(j) || j >= len(d.values) || len(d.values[j]) < n {
+		if !d.variableShown(j) || j >= len(values) || len(values[j]) < n {
 			continue
 		}
-		series := d.values[j]
+		series := values[j]
 		c := d.seriesColor(j)
 		for i := 0; i < n; i++ {
 			drawCircleAA(d.img, m.X(i), m.Y(series[i]), d.opts.MarkerRadius, c)
@@ -565,9 +535,9 @@ func (d *LineChartDrawer) drawMarkersLocked(n int, m mapper) {
 	}
 }
 
-func (d *LineChartDrawer) updateOverlayLocked(p plotRect, n int) {
+func (d *LineChartDrawer) updateOverlayLocked(p plotRect, n int, times []time.Time) {
 	if d.opts.ShowAxes {
-		d.setLabelsLocked(p, n)
+		d.setLabelsLocked(p, n, times)
 		return
 	}
 	d.hideAllLabelsLocked()
@@ -577,10 +547,10 @@ func (d *LineChartDrawer) updateOverlayLocked(p plotRect, n int) {
    Labels / ticks
 --------------------------- */
 
-func (d *LineChartDrawer) setLabelsLocked(p plotRect, n int) {
+func (d *LineChartDrawer) setLabelsLocked(p plotRect, n int, times []time.Time) {
 	d.showAxisLabelsLocked()
 	d.setYLabelsLocked(p)
-	d.updateXTickLabelsLocked(p, n)
+	d.updateXTickLabelsLocked(p, n, times)
 }
 
 func (d *LineChartDrawer) showAxisLabelsLocked() {
@@ -607,10 +577,10 @@ func (d *LineChartDrawer) setYLabelsLocked(p plotRect) {
 	d.yMinT.Refresh()
 }
 
-func (d *LineChartDrawer) updateXTickLabelsLocked(p plotRect, n int) {
+func (d *LineChartDrawer) updateXTickLabelsLocked(p plotRect, n int, times []time.Time) {
 	d.hideAllMidTicksLocked()
 
-	if n <= 0 || len(d.times) == 0 {
+	if n <= 0 || len(times) == 0 {
 		d.xMinT.Text, d.xMaxT.Text = "", ""
 		d.xMinT.Refresh()
 		d.xMaxT.Refresh()
@@ -621,17 +591,17 @@ func (d *LineChartDrawer) updateXTickLabelsLocked(p plotRect, n int) {
 	labelY := axisY + 6
 
 	// Endpoints
-	d.setXEndpointsLocked(p, labelY, axisY)
+	d.setXEndpointsLocked(p, labelY, axisY, times)
 
 	if n == 1 {
 		return
 	}
 
 	// Intermediate ticks
-	d.setXMidTicksLocked(p, n, labelY, axisY)
+	d.setXMidTicksLocked(p, n, labelY, axisY, times)
 }
 
-func (d *LineChartDrawer) setXEndpointsLocked(p plotRect, labelY, axisY float32) {
+func (d *LineChartDrawer) setXEndpointsLocked(p plotRect, labelY, axisY float32, times []time.Time) {
 	format := func(t time.Time) string {
 		if t.IsZero() {
 			return ""
@@ -639,8 +609,8 @@ func (d *LineChartDrawer) setXEndpointsLocked(p plotRect, labelY, axisY float32)
 		return t.Format("15:04:05")
 	}
 
-	leftT := format(d.times[0])
-	rightT := format(d.times[len(d.times)-1])
+	leftT := format(times[0])
+	rightT := format(times[len(times)-1])
 
 	d.xMinT.Text = leftT
 	d.xMaxT.Text = rightT
@@ -672,7 +642,7 @@ func (d *LineChartDrawer) setXEndpointsLocked(p plotRect, labelY, axisY float32)
 	}
 }
 
-func (d *LineChartDrawer) setXMidTicksLocked(p plotRect, n int, labelY, axisY float32) {
+func (d *LineChartDrawer) setXMidTicksLocked(p plotRect, n int, labelY, axisY float32, times []time.Time) {
 	// overlap-aware density
 	sampleW := d.sampleTimeLabelWidthLocked()
 	minSpacing := sampleW + 8
@@ -733,7 +703,7 @@ func (d *LineChartDrawer) setXMidTicksLocked(p plotRect, n int, labelY, axisY fl
 		// label
 		tlbl := d.xTicks[midUsed]
 		tlbl.Color = d.opts.Axis
-		tlbl.Text = format(d.times[idx])
+		tlbl.Text = format(times[idx])
 		tlbl.TextSize = d.xLabelTextSize
 		tlbl.Alignment = fyne.TextAlignCenter
 		tlbl.Refresh()

@@ -3,6 +3,7 @@ package fynediagrams
 import (
 	"image/color"
 
+	"github.com/gclkaze/evamon/cmd/internal/ui/data"
 	"github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 )
 
@@ -55,6 +56,7 @@ func (f *Factory) NewBarChart(opts port.BarChartOptions, title string, descripti
 }
 
 func (f *Factory) NewLineChart(opts port.LineChartOptions, title string, description string, initialWidth, initialHeight, width, height float32) port.DiagramWidget {
-	drawer := NewLineChartDrawer(opts, initialWidth, initialHeight)
+	src := data.NewMultiSeriesRing(opts.MaxPoints, len(opts.Variables)) // example impl
+	drawer := NewLineChartDrawer(src, opts, initialWidth, initialHeight)
 	return NewLineChartWidget(drawer, title, description, width, height)
 }
