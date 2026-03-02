@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/gclkaze/evamon/cmd/internal/app"
@@ -9,6 +10,7 @@ import (
 	ui "github.com/gclkaze/evamon/cmd/internal/ui/factory"
 	"github.com/gclkaze/evamon/cmd/job"
 	"github.com/gclkaze/evamon/cmd/view"
+	"github.com/gclkaze/evamon/pkg/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -47,6 +49,10 @@ func NewRootCmd() *cobra.Command {
 		"Evacron server port",
 	)
 
+	res := utils.AnalyzeExpression("$x == 1")
+	if res == true {
+		fmt.Print("OK")
+	}
 	_ = viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
 	_ = viper.BindPFlag("server.hostname", rootCmd.PersistentFlags().Lookup("hostname"))
 	_ = viper.BindPFlag("server.port", rootCmd.PersistentFlags().Lookup("port"))
