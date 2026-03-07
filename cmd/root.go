@@ -50,7 +50,7 @@ func NewRootCmd() *cobra.Command {
 	)
 
 	res := utils.AnalyzeExpression("$x == 1")
-	if res == true {
+	if res {
 		fmt.Print("OK")
 	}
 	_ = viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
