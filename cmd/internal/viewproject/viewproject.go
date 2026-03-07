@@ -52,6 +52,18 @@ type Diagram struct {
 	Setup []SetupItem `json:"setup"`
 }
 
+func (d Diagram) GetName() string {
+	if d.Setup == nil {
+		return ""
+	}
+
+	if len(d.Setup) == 0 {
+		return ""
+	}
+
+	return d.Setup[0].Title
+}
+
 type DiagramType string
 
 const (

@@ -19,7 +19,7 @@ type ProjectUIHolder struct {
 	windows       []port.ExecutionWindow
 	renderer      port.Renderer
 	drawerFactory draw.Factory
-
+	//ToolbarFactory: toolbarFactory,
 	isMultitab bool
 	props      *properties.Properties
 
@@ -150,6 +150,10 @@ func (inst *ProjectUIHolder) setupAndBuildDiagrams(diagram viewproject.Diagram, 
 		ws = append(ws, w)
 	}
 	return ws, nil
+}
+
+func (inst *ProjectUIHolder) GetRenderer() port.Renderer {
+	return inst.renderer
 }
 
 func (inst *ProjectUIHolder) RegisterVariableDrawerUnsubscriber(variableName string, drawer draw.DiagramWidget) {

@@ -7,4 +7,6 @@ type Renderer interface {
 	NewExecutionWindow(title string) (ExecutionWindow, error)
 	Layout() Layout
 	Run()
+	Controls() Controls
+	Actions() DiagramActions
 }

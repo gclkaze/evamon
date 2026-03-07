@@ -28,9 +28,9 @@ type BuildResult struct {
 
 // Builder builds a dashboard UI (tabs/rows/grids) and returns bindings for live data.
 type Builder struct {
-	Layout  uport.Layout
-	Factory dport.Factory // NewBoolFill / NewBarChart etc.
-
+	Layout         uport.Layout
+	Factory        dport.Factory // NewBoolFill / NewBarChart etc.
+	ToolbarFactory dport.DiagramToolbarFactory
 	MinChartWidth  float32
 	MinChartHeight float32
 
@@ -40,10 +40,12 @@ type Builder struct {
 	DefaultMaxPoints int
 }
 
-func New(layout uport.Layout, factory dport.Factory) *Builder {
+func New(layout uport.Layout, factory dport.Factory, toolbarFactory dport.DiagramToolbarFactory) *Builder {
 	return &Builder{
 		Layout:         layout,
 		Factory:        factory,
+		ToolbarFactory: toolbarFactory,
+
 		MinChartWidth:  400,
 		MinChartHeight: 259,
 
@@ -92,6 +94,41 @@ func (b *Builder) BuildDashboard(dp *vp.DashboardProject) (*BuildResult, error) 
 	}, nil
 }
 
+func (b *Builder) buildDiagramForJob(jobID string, d *vp.Diagram) (uport.UIObject, []BindingTarget, error) {
+	if d == nil {
+		return b.Layout.VBox(), nil, nil
+	}
+	if len(d.Setup) == 0 {
+		return b.Layout.VBox(), nil, nil
+	}
+
+	var (
+		content  uport.UIObject
+		bindings []BindingTarget
+		err      error
+	)
+
+	switch d.Type {
+	case vp.DiagramTypeBoolean:
+		content, bindings, err = b.buildBooleanDiagram(jobID, d)
+	case vp.DiagramTypeBar:
+		content, bindings, err = b.buildBarDiagram(jobID, d)
+	case vp.DiagramTypeLine:
+		content, bindings, err = b.buildLineDiagram(jobID, d)
+	default:
+		return nil, nil, fmt.Errorf("unsupported diagram type %q", d.Type)
+	}
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	toolbar := b.ToolbarFactory.Build(jobID, d)
+	panel := b.wrapWithDiagramPanel(toolbar, content)
+
+	return panel, bindings, nil
+}
+
 func (b *Builder) buildView(v *vp.DashboardView) (uport.UIObject, []BindingTarget, error) {
 	var rows []uport.UIObject
 	var allBindings []BindingTarget
@@ -134,6 +171,23 @@ func (b *Builder) buildRow(r *vp.DashboardRow) (uport.UIObject, []BindingTarget,
 
 	rowObj := b.Layout.GridCols(len(cells), cells...)
 	return rowObj, allBindings, nil
+}
+
+func (b *Builder) wrapWithDiagramPanel(toolbar, content uport.UIObject) uport.UIObject {
+	if toolbar == nil {
+		return content
+	}
+	if content == nil {
+		return toolbar
+	}
+
+	return b.Layout.Border(
+		toolbar,
+		nil,
+		nil,
+		nil,
+		content,
+	)
 }
 
 func (b *Builder) buildColumn(c *vp.DashboardColumn) (uport.UIObject, []BindingTarget, error) {
@@ -185,7 +239,7 @@ func (b *Builder) buildColumn(c *vp.DashboardColumn) (uport.UIObject, []BindingT
 // buildDiagramForJob creates UI objects for one Diagram and returns variable bindings.
 // NOTE: a Diagram may have multiple setup items -> we usually create multiple widgets (one per setup item)
 // and stack them.
-func (b *Builder) buildDiagramForJob(jobID string, d *vp.Diagram) (uport.UIObject, []BindingTarget, error) {
+func (b *Builder) buildDiagramForJobWithTitle(jobID string, d *vp.Diagram) (uport.UIObject, []BindingTarget, error) {
 	if d == nil {
 		return b.Layout.VBox(), nil, nil
 	}

@@ -11,10 +11,35 @@ import (
 	"golang.org/x/image/colornames"
 )
 
+func wrapWithDiagramPanel(toolbar, content port.UIObject, renderer port.Renderer) port.UIObject {
+	if toolbar == nil {
+		return content
+	}
+	if content == nil {
+		return toolbar
+	}
+
+	return renderer.Layout().Border(
+		toolbar,
+		nil,
+		nil,
+		nil,
+		content,
+	)
+}
+
 func BuildDiagramContent(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w port.ExecutionWindow, setup viewproject.SetupItem, width, height float32, maxPoints int, t viewproject.DiagramType) draw.DiagramWidget {
+	/*	tf := &ui.DefaultDiagramToolbarFactory{
+		Layout:   holder.GetRenderer().Layout(),
+		Controls: holder.GetRenderer().Controls(),
+		Actions:  holder.GetRenderer().Actions(),
+	}*/
+
 	switch t {
 	case viewproject.DiagramTypeBoolean:
 		boolFill := buildBooleanDiagram(holder, drawerFactory, setup, width, height)
+		//toolbar := tf.Build(jobID, boolFill)
+		//panel := wrapWithDiagramPanel(toolbar, content)
 		return boolFill
 	case viewproject.DiagramTypeBar:
 		barChart := buildBarchart(holder, drawerFactory, setup, width, height, maxPoints)

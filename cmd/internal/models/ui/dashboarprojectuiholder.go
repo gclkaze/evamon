@@ -5,6 +5,7 @@ import (
 
 	dashboardbuilder "github.com/gclkaze/evamon/cmd/internal/ui/dashboard"
 	draw "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
+	ui "github.com/gclkaze/evamon/cmd/internal/ui/factory"
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 	"github.com/gclkaze/evamon/cmd/internal/viewproject"
 	"github.com/magiconair/properties"
@@ -44,7 +45,12 @@ func (inst *DashboardUIHolder) Create(dp *viewproject.DashboardProject) error {
 		return err
 	}
 	layout := inst.renderer.Layout()
-	builder := dashboardbuilder.New(layout, inst.drawerFactory)
+	tf := &ui.DefaultDiagramToolbarFactory{
+		Layout:   inst.renderer.Layout(),
+		Controls: inst.renderer.Controls(),
+		Actions:  inst.renderer.Actions(),
+	}
+	builder := dashboardbuilder.New(layout, inst.drawerFactory, tf)
 
 	res, err := builder.BuildDashboard(dp)
 	if err != nil {
