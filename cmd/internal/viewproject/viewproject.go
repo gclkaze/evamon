@@ -72,6 +72,28 @@ const (
 	DiagramTypeLine    DiagramType = "line"
 )
 
+type FilterMode string
+
+const (
+	FilterModeAND FilterMode = "AND"
+	FilterModeOR  FilterMode = "OR"
+)
+
+type FilterComponent struct {
+	ID         string `json:"id,omitempty"`
+	Expression string `json:"expression"`
+	Enabled    bool   `json:"enabled"`
+}
+
+type FilterSetup struct {
+	Mode       FilterMode        `json:"mode"`
+	Components []FilterComponent `json:"components"`
+}
+
+type Filter struct {
+	Setup *FilterSetup `json:"setup,omitempty"`
+}
+
 // SetupItem is one variable/series to visualize.
 type SetupItem struct {
 	Variable     string       `json:"variable"`
@@ -85,7 +107,22 @@ type SetupItem struct {
 	// - for bar diagrams:     BarStyle
 	DiagramStyle Style `json:"diagramStyle,omitempty"`
 
+	Filter *Filter `json:"filter,omitempty"`
+
 	MultiVariableSetup []MultiSetupItem `json:"multiVariableSetup,omitempty"`
+}
+
+func (s SetupItem) HasFilter() bool {
+	return s.Filter != nil &&
+		s.Filter.Setup != nil &&
+		len(s.Filter.Setup.Components) > 0
+}
+
+func (s SetupItem) GetFilterMode() FilterMode {
+	if s.Filter == nil || s.Filter.Setup == nil {
+		return FilterModeAND
+	}
+	return s.Filter.Setup.Mode
 }
 
 type MultiSetupItem struct {
@@ -108,6 +145,45 @@ const (
 // --------------------
 // Typed union for diagramStyle
 // --------------------
+func (inst ViewProject) CollectVariables() []string {
+	set := make(map[string]struct{})
+
+	for _, d := range inst.View.Diagrams {
+		for _, v := range d.CollectVariables() {
+			set[v] = struct{}{}
+		}
+	}
+
+	out := make([]string, 0, len(set))
+	for v := range set {
+		out = append(out, v)
+	}
+
+	return out
+}
+func (d Diagram) CollectVariables() []string {
+	set := make(map[string]struct{})
+
+	for _, s := range d.Setup {
+
+		if v := strings.TrimSpace(s.Variable); v != "" {
+			set[v] = struct{}{}
+		}
+
+		for _, ms := range s.MultiVariableSetup {
+			if v := strings.TrimSpace(ms.Variable); v != "" {
+				set[v] = struct{}{}
+			}
+		}
+	}
+
+	out := make([]string, 0, len(set))
+	for v := range set {
+		out = append(out, v)
+	}
+
+	return out
+}
 
 type Style interface {
 	isStyle()
@@ -284,6 +360,7 @@ func (d *Diagram) UnmarshalJSON(b []byte) error {
 			Description:  item.Description,
 			VariableType: item.VariableType,
 			WindowStyle:  item.WindowStyle,
+			Filter:       item.Filter,
 		}
 
 		// Parse top-level diagramStyle (for single-variable diagrams OR “bundle-level” style)
@@ -339,6 +416,8 @@ type setupItemRaw struct {
 	VariableType ValueType       `json:"variableType"`
 	DiagramStyle json.RawMessage `json:"diagramStyle,omitempty"`
 	WindowStyle  *WindowStyle    `json:"windowStyle,omitempty"`
+
+	Filter *Filter `json:"filter,omitempty"`
 
 	MultiVariableSetup []json.RawMessage `json:"multiVariableSetup,omitempty"`
 }
@@ -409,7 +488,50 @@ func (vp ViewProject) Validate() error {
 	}
 	return nil
 }
+func (d Diagram) ValidateFilter(path string, s *SetupItem) error {
+	if s == nil || s.Filter == nil {
+		return nil
+	}
 
+	if s.Filter.Setup == nil {
+		return fmt.Errorf("%s.setup is required when filter is present", path)
+	}
+
+	fs := s.Filter.Setup
+
+	switch fs.Mode {
+	case FilterModeAND, FilterModeOR:
+		// ok
+	default:
+		return fmt.Errorf("%s.mode must be %q or %q", path+".setup", FilterModeAND, FilterModeOR)
+	}
+
+	if len(fs.Components) == 0 {
+		return fmt.Errorf("%s.components must not be empty when filter is present", path+".setup")
+	}
+
+	seenIDs := make(map[string]struct{}, len(fs.Components))
+
+	for i, c := range fs.Components {
+		cp := fmt.Sprintf("%s.components[%d]", path+".setup", i)
+
+		if strings.TrimSpace(c.Expression) == "" {
+			return fmt.Errorf("%s.expression is required", cp)
+		}
+
+		id := strings.TrimSpace(c.ID)
+		if id == "" {
+			continue
+		}
+
+		if _, exists := seenIDs[id]; exists {
+			return fmt.Errorf("%s.id %q is duplicated", cp, id)
+		}
+		seenIDs[id] = struct{}{}
+	}
+
+	return nil
+}
 func (d Diagram) Validate(diagramIndex int) error {
 	if d.Type == "" {
 		return fmt.Errorf("type is required")
@@ -466,6 +588,9 @@ func (d Diagram) Validate(diagramIndex int) error {
 					}
 				}
 			}
+		}
+		if err := d.ValidateFilter(prefix+".filter", &s); err != nil {
+			return err
 		}
 
 		err := d.ValidateMultiVariable(prefix, &s)

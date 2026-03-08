@@ -16,6 +16,6 @@ func SetupTruthyVariableContext() vc.IVariableContext {
 func AnalyzeExpression(expr string) bool {
 	conditionParser := &tafexpr.TAFArgumentParser{}
 	conditionParser.VariableContext = SetupTruthyVariableContext()
-
-	return conditionParser.Analyze(expr)
+	res := conditionParser.Analyze(expr)
+	return res
 }

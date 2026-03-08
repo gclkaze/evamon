@@ -6,12 +6,13 @@ import (
 	"strings"
 
 	draw "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
+	ui "github.com/gclkaze/evamon/cmd/internal/ui/factory"
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 	"github.com/gclkaze/evamon/cmd/internal/viewproject"
 	"golang.org/x/image/colornames"
 )
 
-func wrapWithDiagramPanel(toolbar, content port.UIObject, renderer port.Renderer) port.UIObject {
+/*func wrapWithDiagramPanel(toolbar, content port.UIObject, renderer port.Renderer) port.UIObject {
 	if toolbar == nil {
 		return content
 	}
@@ -26,20 +27,12 @@ func wrapWithDiagramPanel(toolbar, content port.UIObject, renderer port.Renderer
 		nil,
 		content,
 	)
-}
+}*/
 
 func BuildDiagramContent(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w port.ExecutionWindow, setup viewproject.SetupItem, width, height float32, maxPoints int, t viewproject.DiagramType) draw.DiagramWidget {
-	/*	tf := &ui.DefaultDiagramToolbarFactory{
-		Layout:   holder.GetRenderer().Layout(),
-		Controls: holder.GetRenderer().Controls(),
-		Actions:  holder.GetRenderer().Actions(),
-	}*/
-
 	switch t {
 	case viewproject.DiagramTypeBoolean:
 		boolFill := buildBooleanDiagram(holder, drawerFactory, setup, width, height)
-		//toolbar := tf.Build(jobID, boolFill)
-		//panel := wrapWithDiagramPanel(toolbar, content)
 		return boolFill
 	case viewproject.DiagramTypeBar:
 		barChart := buildBarchart(holder, drawerFactory, setup, width, height, maxPoints)
@@ -67,7 +60,16 @@ func BuildDiagram(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w
 		drawer.ToggleItem(it)
 	})
 
-	c := l.Border(legendObj, nil, nil, nil, drawer)
+	tf := &ui.DefaultDiagramToolbarFactory{
+		Layout:   holder.GetRenderer().Layout(),
+		Controls: holder.GetRenderer().Controls(),
+		Actions:  holder.GetRenderer().Actions(),
+	}
+
+	toolbar := tf.Build("", diagram)
+	//	panel := wrapWithDiagramPanel(toolbar, content)
+
+	c := l.Border(legendObj, toolbar, nil, nil, drawer)
 	w.SetContent(c)
 	w.SetResizable(true)
 	return w

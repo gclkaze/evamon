@@ -304,5 +304,5 @@ func (inst *ViewService) dispatch(jobID string, ex *models.ExecutionMessage) {
 		return
 	}
 	inst.wservice.DispatchValue(jobID, msg.Index, time.UnixMilli(ex.T), msg.Value)
-	fmt.Print(msg)
+	//fmt.Print(msg)
 }

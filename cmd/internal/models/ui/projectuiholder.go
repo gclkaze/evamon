@@ -131,6 +131,10 @@ func (inst *ProjectUIHolder) setupAndBuildDiagramsMultiTabed(diagram viewproject
 	return w, nil
 }
 
+func (inst *ProjectUIHolder) GetProjectID() string {
+	return inst.vp.ID
+}
+
 func (inst *ProjectUIHolder) setupAndBuildDiagrams(diagram viewproject.Diagram, windowStyle *viewproject.WindowStyle, width *float32, height *float32) ([]port.ExecutionWindow, error) {
 	theSetupItems := diagram.Setup
 	var ws []port.ExecutionWindow
