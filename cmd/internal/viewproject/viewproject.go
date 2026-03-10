@@ -8,7 +8,6 @@ import (
 
 	"github.com/gclkaze/evamon/cmd/internal/fs"
 	models "github.com/gclkaze/evamon/cmd/internal/models"
-	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
 	"github.com/gclkaze/evamon/pkg/utils"
 )
 
@@ -36,8 +35,6 @@ type ViewProject struct {
 
 	JobID string            `json:"jobID"`
 	View  models.ViewWindow `json:"view"`
-
-	DiagramUI map[*models.Diagram]*uport.DiagramUIRefs `json:"-"`
 }
 
 func (vp *ViewProject) GetProjectBase() *models.ProjectBase {
