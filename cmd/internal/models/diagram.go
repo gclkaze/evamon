@@ -132,6 +132,7 @@ func (d Diagram) GetType() DiagramType {
 func (d *Diagram) UnmarshalJSON(b []byte) error {
 	// Step 1: decode diagram envelope (type + setup raw)
 	var raw struct {
+		ID    string            `json:"id"`
 		Type  DiagramType       `json:"type"`
 		Setup []json.RawMessage `json:"setup"`
 	}
@@ -143,6 +144,7 @@ func (d *Diagram) UnmarshalJSON(b []byte) error {
 		return fmt.Errorf("diagram.type is required")
 	}
 
+	d.ID = raw.ID
 	d.Type = raw.Type
 	d.Setup = make([]SetupItem, 0, len(raw.Setup))
 

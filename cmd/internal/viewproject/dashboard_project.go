@@ -140,14 +140,15 @@ func LoadDashboardProject(path string) (*DashboardProject, error) {
 
 	dp.ProjectPath = absPath
 
-	if err := dp.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid dashboard %q: %w", absPath, err)
-	}
 	modified := dp.EnsureDiagramIDs()
 	if modified {
 		if err := fs.SaveProjectJSON(dp.ProjectPath, &dp); err != nil {
 			return nil, fmt.Errorf("save normalized dashboard %q: %w", absPath, err)
 		}
+	}
+
+	if err := dp.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid dashboard %q: %w", absPath, err)
 	}
 
 	return &dp, nil

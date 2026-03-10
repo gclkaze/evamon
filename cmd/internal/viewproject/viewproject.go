@@ -140,11 +140,52 @@ func LoadViewProject(path string) (*ViewProject, error) {
 
 	vp.ProjectPath = absPath
 
+	modified := vp.EnsureDiagramIDs()
+	if modified {
+		if err := fs.SaveProjectJSON(vp.ProjectPath, &vp); err != nil {
+			return nil, fmt.Errorf("save normalized dashboard %q: %w", absPath, err)
+		}
+	}
+
 	if err := vp.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid project %q: %w", absPath, err)
 	}
 
 	return &vp, nil
+}
+func newUniqueDiagramID(seen map[string]struct{}) string {
+	for {
+		id := utils.GetRandomString()
+		if _, exists := seen[id]; !exists {
+			return id
+		}
+	}
+}
+func (vp *ViewProject) EnsureDiagramIDs() bool {
+	if vp == nil {
+		return false
+	}
+
+	modified := false
+	seen := make(map[string]struct{})
+
+	for i := range vp.View.Diagrams {
+		id := strings.TrimSpace(vp.View.Diagrams[i].GetID())
+
+		if id == "" {
+			id = newUniqueDiagramID(seen)
+			vp.View.Diagrams[i].SetID(id)
+			modified = true
+		} else if _, exists := seen[id]; exists {
+			id = newUniqueDiagramID(seen)
+			vp.View.Diagrams[i].SetID(id)
+			modified = true
+		}
+
+		seen[id] = struct{}{}
+	}
+
+	return modified
 }
 
 // expandUser supports "~" and "~/" on Unix-like environments.
