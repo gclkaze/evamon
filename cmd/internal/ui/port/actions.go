@@ -7,4 +7,5 @@ type DiagramActions interface {
 	DownloadJSON(jobID string, d *vp.Diagram)
 	DownloadCSV(jobID string, d *vp.Diagram)
 	Filters(jobID string, d *vp.Diagram)
+	SetFilterEnabled(jobID string, d *vp.Diagram, enabled bool)
 }

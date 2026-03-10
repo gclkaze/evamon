@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/gclkaze/evamon/cmd/internal/fs"
 )
 
 // ============================================================
@@ -21,6 +23,14 @@ type DashboardProject struct {
 	Views       []DashboardView `json:"views"`
 }
 
+func (dp *DashboardProject) GetProjectBase() *ProjectBase {
+	return &dp.ProjectBase
+}
+
+func (dp *DashboardProject) GetOwnerKind() string {
+	return "dashboardProject"
+}
+
 type DashboardView struct {
 	ID          string         `json:"id,omitempty"`
 	Title       string         `json:"title"`
@@ -30,6 +40,19 @@ type DashboardView struct {
 
 type DashboardRow struct {
 	Columns []DashboardColumn `json:"columns"`
+}
+
+func (vp *DashboardProject) BindProjectPointers() {
+	for i := range vp.Views {
+		for r := range vp.Views[i].Rows {
+			for c := range vp.Views[i].Rows[r].Columns {
+				viewWindow := vp.Views[i].Rows[r].Columns[c].View
+				for d := range viewWindow.Diagrams {
+					vp.Views[i].Rows[r].Columns[c].View.Diagrams[d].Owner = vp
+				}
+			}
+		}
+	}
 }
 
 type DashboardColumn struct {
@@ -120,6 +143,16 @@ func LoadDashboardProject(path string) (*DashboardProject, error) {
 	}
 
 	return &dp, nil
+}
+
+func (dp *DashboardProject) Save() error {
+	if dp == nil {
+		return fmt.Errorf("dashboard project is nil")
+	}
+	if err := dp.Validate(); err != nil {
+		return fmt.Errorf("validate before save: %w", err)
+	}
+	return fs.SaveProjectJSON(dp.ProjectPath, dp)
 }
 
 // ============================================================

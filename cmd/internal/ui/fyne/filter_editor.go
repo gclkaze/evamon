@@ -1,11 +1,14 @@
 package fynerenderer
 
 import (
+	"image/color"
 	"strings"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	fynelayout "fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	viewproject "github.com/gclkaze/evamon/cmd/internal/viewproject"
@@ -18,7 +21,12 @@ type FilterEditor struct {
 	modeRadio  *widget.RadioGroup
 	entry      *widget.Entry
 	addBtn     *widget.Button
-	errorLabel *widget.Label
+
+	errorText *canvas.Text
+	errorIcon *widget.Icon
+	errorBox  *fyne.Container
+
+	filterEnabled bool
 
 	rowsBox *fyne.Container
 	scroll  *container.Scroll
@@ -29,22 +37,26 @@ type FilterEditor struct {
 	components []viewproject.FilterComponent
 	mode       viewproject.FilterMode
 
+	diagram *viewproject.Diagram
+
 	validateFn func(string) error
-	saveFn     func(*viewproject.Filter) error
+	saveFn     func(*viewproject.Filter, *viewproject.Diagram) error
 	cancelFn   func()
 }
 
 func NewFilterEditor(
 	title string,
 	initial *viewproject.Filter,
+	diagram *viewproject.Diagram,
 	validateFn func(string) error,
-	saveFn func(*viewproject.Filter) error,
+	saveFn func(*viewproject.Filter, *viewproject.Diagram) error,
 	cancelFn func(),
 ) *FilterEditor {
 	fe := &FilterEditor{
 		validateFn: validateFn,
 		saveFn:     saveFn,
 		cancelFn:   cancelFn,
+		diagram:    diagram,
 	}
 
 	fe.loadInitial(initial)
@@ -66,6 +78,7 @@ func (fe *FilterEditor) CurrentFilter() *viewproject.Filter {
 	}
 
 	return &viewproject.Filter{
+		Enabled: fe.filterEnabled,
 		Setup: &viewproject.FilterSetup{
 			Mode:       fe.mode,
 			Components: fe.cloneComponents(),
@@ -76,16 +89,16 @@ func (fe *FilterEditor) CurrentFilter() *viewproject.Filter {
 func (fe *FilterEditor) loadInitial(initial *viewproject.Filter) {
 	fe.mode = viewproject.FilterModeAND
 	fe.components = nil
+	fe.filterEnabled = false
 
 	if initial == nil || initial.Setup == nil {
 		return
 	}
-
+	fe.filterEnabled = initial.Enabled
 	fe.mode = initial.Setup.Mode
 	if fe.mode == "" {
 		fe.mode = viewproject.FilterModeAND
 	}
-
 	fe.components = append([]viewproject.FilterComponent(nil), initial.Setup.Components...)
 }
 
@@ -103,8 +116,17 @@ func (fe *FilterEditor) initWidgets(title string) {
 	fe.addBtn = widget.NewButton("+", fe.onAdd)
 	fe.addBtn.Disable()
 
-	fe.errorLabel = widget.NewLabel("")
-	fe.errorLabel.Hide()
+	fe.errorText = canvas.NewText("", color.NRGBA{R: 211, G: 47, B: 47, A: 255})
+	fe.errorText.TextSize = 12
+
+	fe.errorIcon = widget.NewIcon(theme.WarningIcon())
+
+	fe.errorBox = container.NewHBox(
+		fe.errorIcon,
+		fe.errorText,
+	)
+
+	fe.errorBox.Hide()
 
 	fe.rowsBox = container.NewVBox()
 	fe.scroll = container.NewVScroll(fe.rowsBox)
@@ -157,7 +179,7 @@ func (fe *FilterEditor) buildCenter() fyne.CanvasObject {
 	return container.NewVBox(
 		fe.buildModeRow(),
 		fe.buildInputRow(),
-		fe.errorLabel,
+		fe.errorBox,
 		fe.scroll,
 	)
 }
@@ -226,7 +248,7 @@ func (fe *FilterEditor) onSave() {
 		return
 	}
 
-	if err := fe.saveFn(fe.CurrentFilter()); err != nil {
+	if err := fe.saveFn(fe.CurrentFilter(), fe.diagram); err != nil {
 		fe.showError(err.Error())
 	}
 }
@@ -259,13 +281,14 @@ func (fe *FilterEditor) clearInput() {
 }
 
 func (fe *FilterEditor) showError(msg string) {
-	fe.errorLabel.SetText(msg)
-	fe.errorLabel.Show()
+	fe.errorText.Text = msg
+	fe.errorText.Refresh()
+	fe.errorBox.Show()
 }
-
 func (fe *FilterEditor) hideError() {
-	fe.errorLabel.SetText("")
-	fe.errorLabel.Hide()
+	fe.errorText.Text = ""
+	fe.errorText.Refresh()
+	fe.errorBox.Hide()
 }
 
 func (fe *FilterEditor) removeAt(idx int) {

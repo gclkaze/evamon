@@ -315,7 +315,7 @@ func buildRowsFromRegistry(reg map[string]string) []viewLsRow {
 		r.MultiTab = vp.View.MultiTab
 		r.Diagrams = len(vp.View.Diagrams)
 		r.Types = summarizeDiagramTypes(vp)
-
+		vp.BindDiagramPointers()
 		rows = append(rows, r)
 	}
 

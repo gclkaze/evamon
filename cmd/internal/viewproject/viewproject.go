@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/gclkaze/evamon/cmd/internal/fs"
 )
 
 // ============================================================
@@ -41,6 +43,20 @@ type ViewProject struct {
 	View  ViewWindow `json:"view"`
 }
 
+func (vp *ViewProject) GetProjectBase() *ProjectBase {
+	return &vp.ProjectBase
+}
+
+func (vp *ViewProject) GetOwnerKind() string {
+	return "viewProject"
+}
+
+func (vp *ViewProject) BindDiagramPointers() {
+	for i := range vp.View.Diagrams {
+		vp.View.Diagrams[i].Owner = vp
+	}
+}
+
 type WindowStyle struct {
 	Width  *float32 `json:"width,omitempty"`
 	Height *float32 `json:"height,omitempty"`
@@ -48,8 +64,9 @@ type WindowStyle struct {
 
 // Diagram contains a typed union for setup items based on Diagram.Type.
 type Diagram struct {
-	Type  DiagramType `json:"type"`
-	Setup []SetupItem `json:"setup"`
+	Owner DiagramOwner `json:"-"`
+	Type  DiagramType  `json:"type"`
+	Setup []SetupItem  `json:"setup"`
 }
 
 func (d Diagram) GetName() string {
@@ -91,7 +108,8 @@ type FilterSetup struct {
 }
 
 type Filter struct {
-	Setup *FilterSetup `json:"setup,omitempty"`
+	Enabled bool         `json:"enabled"`
+	Setup   *FilterSetup `json:"setup,omitempty"`
 }
 
 // SetupItem is one variable/series to visualize.
@@ -117,7 +135,26 @@ func (s SetupItem) HasFilter() bool {
 		s.Filter.Setup != nil &&
 		len(s.Filter.Setup.Components) > 0
 }
+func (s SetupItem) IsFilterEnabled() bool {
+	if s.Filter == nil {
+		return false
+	}
+	return s.Filter.Enabled
+}
 
+func (f *Filter) HasEnabledComponents() bool {
+	if f == nil || f.Setup == nil {
+		return false
+	}
+
+	for _, c := range f.Setup.Components {
+		if c.Enabled {
+			return true
+		}
+	}
+
+	return false
+}
 func (s SetupItem) GetFilterMode() FilterMode {
 	if s.Filter == nil || s.Filter.Setup == nil {
 		return FilterModeAND
@@ -179,6 +216,9 @@ func (d Diagram) CollectVariables() []string {
 
 	out := make([]string, 0, len(set))
 	for v := range set {
+		if !strings.HasPrefix(v, "$") {
+			v = "$" + v
+		}
 		out = append(out, v)
 	}
 
@@ -325,6 +365,34 @@ func expandUser(p string) (string, error) {
 		return filepath.Join(home, p[2:]), nil
 	}
 	return p, nil
+}
+
+func (d *Diagram) GetOwner() DiagramOwner {
+	if d == nil {
+		return nil
+	}
+	return d.Owner
+}
+
+func (d *Diagram) GetProjectPath() string {
+	if d == nil || d.Owner == nil {
+		return ""
+	}
+	base := d.Owner.GetProjectBase()
+	if base == nil {
+		return ""
+	}
+	return base.ProjectPath
+}
+
+func (vp *ViewProject) Save() error {
+	if vp == nil {
+		return fmt.Errorf("view project is nil")
+	}
+	if err := vp.Validate(); err != nil {
+		return fmt.Errorf("validate before save: %w", err)
+	}
+	return fs.SaveProjectJSON(vp.ProjectPath, vp)
 }
 
 // ============================================================

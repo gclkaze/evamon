@@ -17,12 +17,30 @@ type DefaultDiagramToolbarFactory struct {
 	Actions  uport.DiagramActions
 }
 
+func primarySetupItem(d *vp.Diagram) *vp.SetupItem {
+	if d == nil || len(d.Setup) == 0 {
+		return nil
+	}
+	return &d.Setup[0]
+}
+
 func (f *DefaultDiagramToolbarFactory) Build(jobID string, d *vp.Diagram) uport.UIObject {
 	if d == nil {
 		return nil
 	}
 
 	title := diagramTitle(d)
+	setupItem := primarySetupItem(d)
+
+	var children []uport.UIObject
+	children = append(children, f.Layout.Title(title), f.Layout.Spacer())
+
+	if setupItem != nil && setupItem.HasFilter() {
+		filterToggle := f.Controls.Check("filters", setupItem.IsFilterEnabled(), func(v bool) {
+			f.Actions.SetFilterEnabled(jobID, d, v)
+		})
+		children = append(children, filterToggle)
+	}
 
 	filtersBtn := f.Controls.IconButton(uport.IconFilters, func() {
 		f.Actions.Filters(jobID, d)
@@ -47,13 +65,9 @@ func (f *DefaultDiagramToolbarFactory) Build(jobID string, d *vp.Diagram) uport.
 		f.Actions.Maximize(jobID, d)
 	})
 
-	return f.Layout.HBox(
-		f.Layout.Title(title),
-		f.Layout.Spacer(),
-		filtersBtn,
-		downloadBtn,
-		maximizeBtn,
-	)
+	children = append(children, filtersBtn, downloadBtn, maximizeBtn)
+
+	return f.Layout.HBox(children...)
 }
 
 func diagramTitle(d *vp.Diagram) string {

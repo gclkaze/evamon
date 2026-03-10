@@ -27,6 +27,12 @@ func (Controls) IconButton(icon uport.ToolbarIcon, onClick func()) uport.UIObjec
 	return wrap(widget.NewButtonWithIcon("", res, onClick))
 }
 
+func (Controls) Check(label string, checked bool, onChanged func(bool)) uport.UIObject {
+	ch := widget.NewCheck(label, onChanged)
+	ch.SetChecked(checked)
+	return wrap(ch)
+}
+
 func (Controls) IconMenu(icon uport.ToolbarIcon, items []uport.MenuItem) uport.UIObject {
 	var res fyne2.Resource
 

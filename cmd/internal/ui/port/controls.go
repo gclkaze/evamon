@@ -16,4 +16,5 @@ type MenuItem struct {
 type Controls interface {
 	IconButton(icon ToolbarIcon, onClick func()) UIObject
 	IconMenu(icon ToolbarIcon, items []MenuItem) UIObject
+	Check(label string, checked bool, onChanged func(bool)) UIObject
 }

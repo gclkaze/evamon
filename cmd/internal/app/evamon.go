@@ -218,6 +218,7 @@ func (inst *Evamon) RenderViewProject(params *userinput.ViewRenderParams) error 
 		return err
 	}
 
+	vp.BindDiagramPointers()
 	// Delegate to renderer with headless mode
 	return inst.viewService.Render(vp, params.Headless)
 }
@@ -280,7 +281,7 @@ func (inst *Evamon) RenderDashboardViewProject(params *userinput.ViewDashboardRe
 	if err != nil {
 		return err
 	}
-
+	vp.BindProjectPointers()
 	// Delegate to renderer with headless mode
 	return inst.viewService.RenderDashboard(vp)
 }
