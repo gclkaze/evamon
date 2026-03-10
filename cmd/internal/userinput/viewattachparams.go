@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/gclkaze/evamon/cmd/internal/models"
 	"github.com/gclkaze/evamon/cmd/internal/viewproject"
 	"github.com/gclkaze/evamon/pkg/utils"
 )
@@ -16,7 +17,7 @@ type ViewAttachParams struct {
 	WidgetPath string
 
 	// Filled after validation
-	ViewWindow *viewproject.ViewWindow
+	ViewWindow *models.ViewWindow
 }
 
 func NewViewAttachParams(jobID, widgetPath string) (*ViewAttachParams, error) {

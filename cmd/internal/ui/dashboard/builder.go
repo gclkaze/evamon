@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gclkaze/evamon/cmd/internal/models"
 	window "github.com/gclkaze/evamon/cmd/internal/ui/chart"
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
@@ -94,7 +95,7 @@ func (b *Builder) BuildDashboard(dp *vp.DashboardProject) (*BuildResult, error) 
 	}, nil
 }
 
-func (b *Builder) buildDiagramForJob(jobID string, d *vp.Diagram) (uport.UIObject, []BindingTarget, error) {
+func (b *Builder) buildDiagramForJob(jobID string, d *models.Diagram) (uport.UIObject, []BindingTarget, error) {
 	if d == nil {
 		return b.Layout.VBox(), nil, nil
 	}
@@ -109,11 +110,11 @@ func (b *Builder) buildDiagramForJob(jobID string, d *vp.Diagram) (uport.UIObjec
 	)
 
 	switch d.Type {
-	case vp.DiagramTypeBoolean:
+	case models.DiagramTypeBoolean:
 		content, bindings, err = b.buildBooleanDiagram(jobID, d)
-	case vp.DiagramTypeBar:
+	case models.DiagramTypeBar:
 		content, bindings, err = b.buildBarDiagram(jobID, d)
-	case vp.DiagramTypeLine:
+	case models.DiagramTypeLine:
 		content, bindings, err = b.buildLineDiagram(jobID, d)
 	default:
 		return nil, nil, fmt.Errorf("unsupported diagram type %q", d.Type)
@@ -239,7 +240,7 @@ func (b *Builder) buildColumn(c *vp.DashboardColumn) (uport.UIObject, []BindingT
 // buildDiagramForJob creates UI objects for one Diagram and returns variable bindings.
 // NOTE: a Diagram may have multiple setup items -> we usually create multiple widgets (one per setup item)
 // and stack them.
-func (b *Builder) buildDiagramForJobWithTitle(jobID string, d *vp.Diagram) (uport.UIObject, []BindingTarget, error) {
+func (b *Builder) buildDiagramForJobWithTitle(jobID string, d *models.Diagram) (uport.UIObject, []BindingTarget, error) {
 	if d == nil {
 		return b.Layout.VBox(), nil, nil
 	}
@@ -252,11 +253,11 @@ func (b *Builder) buildDiagramForJobWithTitle(jobID string, d *vp.Diagram) (upor
 		err      error
 	)
 	switch d.Type {
-	case vp.DiagramTypeBoolean:
+	case models.DiagramTypeBoolean:
 		content, bindings, err = b.buildBooleanDiagram(jobID, d)
-	case vp.DiagramTypeBar:
+	case models.DiagramTypeBar:
 		content, bindings, err = b.buildBarDiagram(jobID, d)
-	case vp.DiagramTypeLine:
+	case models.DiagramTypeLine:
 		content, bindings, err = b.buildLineDiagram(jobID, d)
 	default:
 		return nil, nil, fmt.Errorf("unsupported diagram type %q", d.Type)
@@ -269,7 +270,7 @@ func (b *Builder) buildDiagramForJobWithTitle(jobID string, d *vp.Diagram) (upor
 	return b.wrapWithDiagramTitle(jobID, d, content), bindings, nil
 }
 
-func (b *Builder) wrapWithDiagramTitle(jobID string, d *vp.Diagram, content uport.UIObject) uport.UIObject {
+func (b *Builder) wrapWithDiagramTitle(jobID string, d *models.Diagram, content uport.UIObject) uport.UIObject {
 	title := strings.TrimSpace(content.Title())
 	if title == "" {
 		// Good fallbacks: first setup title, first variable, or jobID/type
@@ -290,7 +291,7 @@ func (b *Builder) wrapWithDiagramTitle(jobID string, d *vp.Diagram, content upor
 	return b.Layout.Card(title, "", content)
 }
 
-func (b *Builder) buildBooleanDiagram(jobID string, d *vp.Diagram) (uport.UIObject, []BindingTarget, error) {
+func (b *Builder) buildBooleanDiagram(jobID string, d *models.Diagram) (uport.UIObject, []BindingTarget, error) {
 	var parts []uport.UIObject
 	var bindings []BindingTarget
 
@@ -329,7 +330,7 @@ func (b *Builder) buildBooleanDiagram(jobID string, d *vp.Diagram) (uport.UIObje
 	return b.Layout.VBox(parts...), bindings, nil
 }
 
-func (b *Builder) buildBarDiagram(jobID string, d *vp.Diagram) (uport.UIObject, []BindingTarget, error) {
+func (b *Builder) buildBarDiagram(jobID string, d *models.Diagram) (uport.UIObject, []BindingTarget, error) {
 	var parts []uport.UIObject
 	var bindings []BindingTarget
 
@@ -365,7 +366,7 @@ func (b *Builder) buildBarDiagram(jobID string, d *vp.Diagram) (uport.UIObject, 
 	return b.Layout.VBox(parts...), bindings, nil
 }
 
-func (b *Builder) buildLineDiagram(jobID string, d *vp.Diagram) (uport.UIObject, []BindingTarget, error) {
+func (b *Builder) buildLineDiagram(jobID string, d *models.Diagram) (uport.UIObject, []BindingTarget, error) {
 	var parts []uport.UIObject
 	var bindings []BindingTarget
 
@@ -402,7 +403,7 @@ func (b *Builder) buildLineDiagram(jobID string, d *vp.Diagram) (uport.UIObject,
 	return b.Layout.VBox(parts...), bindings, nil
 }
 
-func defaultDiagramTitle(d *vp.Diagram) string {
+func defaultDiagramTitle(d *models.Diagram) string {
 	if d == nil {
 		return ""
 	}

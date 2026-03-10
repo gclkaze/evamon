@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	models "github.com/gclkaze/evamon/cmd/internal/models"
 	"github.com/gclkaze/evamon/cmd/internal/viewproject"
 )
 
@@ -94,7 +95,7 @@ func TestLoadViewProject_OK_BooleanDiagram(t *testing.T) {
 	if setup.DiagramStyle == nil {
 		t.Fatalf("expected DiagramStyle not nil")
 	}
-	if _, ok := setup.DiagramStyle.(viewproject.BooleanStyle); !ok {
+	if _, ok := setup.DiagramStyle.(models.BooleanStyle); !ok {
 		t.Fatalf("expected BooleanStyle, got %T", setup.DiagramStyle)
 	}
 }
@@ -138,7 +139,7 @@ func TestLoadViewProject_OK_BarDiagram_WindowStyleInts(t *testing.T) {
 	}
 
 	setup := vp.View.Diagrams[0].Setup[0]
-	if _, ok := setup.DiagramStyle.(viewproject.BarStyle); !ok {
+	if _, ok := setup.DiagramStyle.(models.BarStyle); !ok {
 		t.Fatalf("expected BarStyle, got %T", setup.DiagramStyle)
 	}
 }
@@ -296,7 +297,7 @@ func TestLoadViewWindow_OK_BooleanDiagram(t *testing.T) {
 	if *setup.WindowStyle.Width != 300 || *setup.WindowStyle.Height != 300 {
 		t.Fatalf("unexpected setup.windowStyle values: %+v", setup.WindowStyle)
 	}
-	if _, ok := setup.DiagramStyle.(viewproject.BooleanStyle); !ok {
+	if _, ok := setup.DiagramStyle.(models.BooleanStyle); !ok {
 		t.Fatalf("expected BooleanStyle, got %T", setup.DiagramStyle)
 	}
 }
@@ -445,7 +446,7 @@ func TestLoadViewProject_OK_BarDiagram_MultiVariableSetup(t *testing.T) {
 	if setup.DiagramStyle == nil {
 		t.Fatalf("expected parent DiagramStyle not nil")
 	}
-	if _, ok := setup.DiagramStyle.(viewproject.BarStyle); !ok {
+	if _, ok := setup.DiagramStyle.(models.BarStyle); !ok {
 		t.Fatalf("expected parent BarStyle, got %T", setup.DiagramStyle)
 	}
 
@@ -454,7 +455,7 @@ func TestLoadViewProject_OK_BarDiagram_MultiVariableSetup(t *testing.T) {
 		if child.DiagramStyle == nil {
 			t.Fatalf("expected child[%d] DiagramStyle not nil", i)
 		}
-		if _, ok := child.DiagramStyle.(viewproject.BarStyle); !ok {
+		if _, ok := child.DiagramStyle.(models.BarStyle); !ok {
 			t.Fatalf("expected child[%d] BarStyle, got %T", i, child.DiagramStyle)
 		}
 	}

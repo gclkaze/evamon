@@ -5,10 +5,10 @@ import (
 	"image/color"
 	"strings"
 
+	"github.com/gclkaze/evamon/cmd/internal/models"
 	draw "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 	ui "github.com/gclkaze/evamon/cmd/internal/ui/factory"
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
-	"github.com/gclkaze/evamon/cmd/internal/viewproject"
 	"golang.org/x/image/colornames"
 )
 
@@ -29,23 +29,23 @@ import (
 	)
 }*/
 
-func BuildDiagramContent(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w port.ExecutionWindow, setup viewproject.SetupItem, width, height float32, maxPoints int, t viewproject.DiagramType) draw.DiagramWidget {
+func BuildDiagramContent(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w port.ExecutionWindow, setup models.SetupItem, width, height float32, maxPoints int, t models.DiagramType) draw.DiagramWidget {
 	switch t {
-	case viewproject.DiagramTypeBoolean:
+	case models.DiagramTypeBoolean:
 		boolFill := buildBooleanDiagram(holder, drawerFactory, setup, width, height)
 		return boolFill
-	case viewproject.DiagramTypeBar:
+	case models.DiagramTypeBar:
 		barChart := buildBarchart(holder, drawerFactory, setup, width, height, maxPoints)
 		return barChart
-	case viewproject.DiagramTypeLine:
+	case models.DiagramTypeLine:
 		lineChart := buildLinechart(holder, drawerFactory, setup, width, height, maxPoints)
 		return lineChart
 	}
 	return nil
 }
 
-func BuildDiagram(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w port.ExecutionWindow, setup viewproject.SetupItem, width, height float32, maxPoints int,
-	renderer port.Renderer, diagram *viewproject.Diagram) port.ExecutionWindow {
+func BuildDiagram(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w port.ExecutionWindow, setup models.SetupItem, width, height float32, maxPoints int,
+	renderer port.Renderer, diagram *models.Diagram) port.ExecutionWindow {
 
 	vars := CollectVariables(diagram)
 	theItems := VariableStylesToLegendItems(vars)
@@ -90,7 +90,7 @@ func VariableStylesToLegendItems(vars []draw.VariableStyle) []port.LegendItem {
 	return out
 }
 
-func CollectVariables(d *viewproject.Diagram) []draw.VariableStyle {
+func CollectVariables(d *models.Diagram) []draw.VariableStyle {
 	var out []draw.VariableStyle
 
 	for si := range d.Setup {
@@ -106,14 +106,14 @@ func CollectVariables(d *viewproject.Diagram) []draw.VariableStyle {
 				var col color.Color
 				txt := ""
 				switch d.Type {
-				case viewproject.DiagramTypeBar:
-					if bs, ok := ms.DiagramStyle.(viewproject.BarStyle); ok {
+				case models.DiagramTypeBar:
+					if bs, ok := ms.DiagramStyle.(models.BarStyle); ok {
 						txt = bs.Bar
 						col = lookupColor(bs.Bar)
 					}
 
-				case viewproject.DiagramTypeLine:
-					if ls, ok := ms.DiagramStyle.(viewproject.LineStyle); ok {
+				case models.DiagramTypeLine:
+					if ls, ok := ms.DiagramStyle.(models.LineStyle); ok {
 						txt = ls.Line
 						col = lookupColor(ls.Line)
 					}
@@ -134,20 +134,20 @@ func CollectVariables(d *viewproject.Diagram) []draw.VariableStyle {
 		var col color.Color
 		txt := ""
 		switch d.Type {
-		case viewproject.DiagramTypeBar:
-			if bs, ok := s.DiagramStyle.(viewproject.BarStyle); ok {
+		case models.DiagramTypeBar:
+			if bs, ok := s.DiagramStyle.(models.BarStyle); ok {
 				txt = bs.Axis
 				col = lookupColor(bs.Axis)
 			}
 
-		case viewproject.DiagramTypeLine:
-			if ls, ok := s.DiagramStyle.(viewproject.LineStyle); ok {
+		case models.DiagramTypeLine:
+			if ls, ok := s.DiagramStyle.(models.LineStyle); ok {
 				txt = ls.Line
 				col = lookupColor(ls.Line)
 			}
 
-		case viewproject.DiagramTypeBoolean:
-			if bs, ok := s.DiagramStyle.(viewproject.BooleanStyle); ok {
+		case models.DiagramTypeBoolean:
+			if bs, ok := s.DiagramStyle.(models.BooleanStyle); ok {
 				txt = bs.True
 				col = lookupColor(bs.True)
 			}
@@ -173,7 +173,7 @@ func lookupColor(s string) color.Color {
 	return colornames.Gray
 }
 
-func buildBooleanDiagram(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, setup viewproject.SetupItem, width, height float32) draw.DiagramWidget {
+func buildBooleanDiagram(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, setup models.SetupItem, width, height float32) draw.DiagramWidget {
 	boolFill, err := CreateBoolDrawer(drawerFactory, &setup, -1, width, height)
 	if err != nil {
 		return nil
@@ -182,11 +182,11 @@ func buildBooleanDiagram(holder draw.VariableDrawerOwner, drawerFactory draw.Fac
 	return boolFill
 }
 
-func CreateBoolDrawer(drawerFactory draw.Factory, setup *viewproject.SetupItem, index int, width, height float32) (draw.DiagramWidget, error) {
+func CreateBoolDrawer(drawerFactory draw.Factory, setup *models.SetupItem, index int, width, height float32) (draw.DiagramWidget, error) {
 	// Extract style if present
 	var trueColor, falseColor color.RGBA
 	if setup.DiagramStyle != nil {
-		st, ok := setup.DiagramStyle.(viewproject.BooleanStyle)
+		st, ok := setup.DiagramStyle.(models.BooleanStyle)
 		if !ok {
 			if index == -1 {
 				return nil, fmt.Errorf("diagramStyle is not BooleanStyle")
@@ -208,11 +208,11 @@ func CreateBoolDrawer(drawerFactory draw.Factory, setup *viewproject.SetupItem, 
 	return w, nil
 }
 
-func CreateBarchartDrawer(drawerFactory draw.Factory, setup *viewproject.SetupItem, index int, width, height float32, maxPoints int) (draw.DiagramWidget, error) {
+func CreateBarchartDrawer(drawerFactory draw.Factory, setup *models.SetupItem, index int, width, height float32, maxPoints int) (draw.DiagramWidget, error) {
 	var axisColor, backgroundColor color.RGBA
 
 	if setup.DiagramStyle != nil {
-		if bs, ok := setup.DiagramStyle.(viewproject.BarStyle); ok {
+		if bs, ok := setup.DiagramStyle.(models.BarStyle); ok {
 			axisColor = colornames.Map[bs.Axis]
 			backgroundColor = colornames.Map[bs.Background]
 			if !ok {
@@ -233,7 +233,7 @@ func CreateBarchartDrawer(drawerFactory draw.Factory, setup *viewproject.SetupIt
 		vars := make([]draw.VariableStyle, 0)
 		for i := range setup.MultiVariableSetup {
 			current := setup.MultiVariableSetup[i]
-			theBar, ok := current.DiagramStyle.(viewproject.BarStyle)
+			theBar, ok := current.DiagramStyle.(models.BarStyle)
 			if !ok {
 				continue
 			}
@@ -242,7 +242,7 @@ func CreateBarchartDrawer(drawerFactory draw.Factory, setup *viewproject.SetupIt
 		}
 		theVariables = vars
 	} else {
-		if bs, ok := setup.DiagramStyle.(viewproject.BarStyle); ok {
+		if bs, ok := setup.DiagramStyle.(models.BarStyle); ok {
 			barColor := colornames.Map[bs.Axis]
 			theVariables = []draw.VariableStyle{{VariableName: setup.Variable, VarColor: barColor}}
 		}
@@ -258,14 +258,14 @@ func CreateBarchartDrawer(drawerFactory draw.Factory, setup *viewproject.SetupIt
 	return w, nil
 }
 
-func CreateLinechartDrawer(drawerFactory draw.Factory, setup *viewproject.SetupItem, index int, width, height float32, maxPoints int) (draw.DiagramWidget, error) {
+func CreateLinechartDrawer(drawerFactory draw.Factory, setup *models.SetupItem, index int, width, height float32, maxPoints int) (draw.DiagramWidget, error) {
 	opts := draw.DefaultLineChartOptions()
 
 	if setup.MultiVariableSetup != nil {
 		vars := make([]draw.VariableStyle, 0)
 		for i := range setup.MultiVariableSetup {
 			current := setup.MultiVariableSetup[i]
-			theBar, ok := current.DiagramStyle.(viewproject.LineStyle)
+			theBar, ok := current.DiagramStyle.(models.LineStyle)
 			if !ok {
 				continue
 			}
@@ -274,7 +274,7 @@ func CreateLinechartDrawer(drawerFactory draw.Factory, setup *viewproject.SetupI
 		}
 		opts.Variables = vars
 	} else {
-		if bs, ok := setup.DiagramStyle.(viewproject.LineStyle); ok {
+		if bs, ok := setup.DiagramStyle.(models.LineStyle); ok {
 			lineColor := colornames.Map[bs.Line]
 			backgroundColor := colornames.Map[bs.Background]
 			opts.Background = backgroundColor
@@ -294,7 +294,7 @@ func CreateLinechartDrawer(drawerFactory draw.Factory, setup *viewproject.SetupI
 	return w, nil
 }
 
-func buildLinechart(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, setup viewproject.SetupItem, width, height float32, maxPoints int) draw.DiagramWidget {
+func buildLinechart(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, setup models.SetupItem, width, height float32, maxPoints int) draw.DiagramWidget {
 	linechart, err := CreateLinechartDrawer(drawerFactory, &setup, -1, width, height, maxPoints)
 	if err != nil {
 		return nil
@@ -304,7 +304,7 @@ func buildLinechart(holder draw.VariableDrawerOwner, drawerFactory draw.Factory,
 	return linechart
 }
 
-func buildBarchart(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, setup viewproject.SetupItem, width, height float32, maxPoints int) draw.DiagramWidget {
+func buildBarchart(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, setup models.SetupItem, width, height float32, maxPoints int) draw.DiagramWidget {
 	barchart, err := CreateBarchartDrawer(drawerFactory, &setup, -1, width, height, maxPoints)
 	if err != nil {
 		return nil

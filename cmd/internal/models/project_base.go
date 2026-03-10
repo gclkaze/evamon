@@ -1,4 +1,4 @@
-package viewproject
+package models
 
 // ProjectBase is shared metadata for any on-disk UI project file.
 // Embed it to simulate "super class" behavior in Go.

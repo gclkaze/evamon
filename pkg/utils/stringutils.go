@@ -1,6 +1,9 @@
 package utils
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/google/uuid"
@@ -39,4 +42,25 @@ func NormalizeSlice(in []string) []string {
 		return nil
 	}
 	return out
+}
+
+// ============================================================
+// Strict JSON helpers
+// ============================================================
+
+// decodeStrict decodes JSON and fails on unknown fields.
+
+func DecodeStrict(data []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	dec.UseNumber()
+
+	if err := dec.Decode(v); err != nil {
+		return err
+	}
+	// Ensure no trailing junk
+	if dec.More() {
+		return errors.New("unexpected trailing JSON content")
+	}
+	return nil
 }

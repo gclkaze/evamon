@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/gclkaze/evamon/cmd/internal/fs"
+	models "github.com/gclkaze/evamon/cmd/internal/models"
+	"github.com/gclkaze/evamon/pkg/utils"
 )
 
 // ============================================================
@@ -16,14 +18,14 @@ import (
 // ============================================================
 
 type DashboardProject struct {
-	ProjectBase
+	models.ProjectBase
 
-	Title       string          `json:"title"`
-	WindowStyle *WindowStyle    `json:"windowStyle,omitempty"`
-	Views       []DashboardView `json:"views"`
+	Title       string              `json:"title"`
+	WindowStyle *models.WindowStyle `json:"windowStyle,omitempty"`
+	Views       []DashboardView     `json:"views"`
 }
 
-func (dp *DashboardProject) GetProjectBase() *ProjectBase {
+func (dp *DashboardProject) GetProjectBase() *models.ProjectBase {
 	return &dp.ProjectBase
 }
 
@@ -32,10 +34,10 @@ func (dp *DashboardProject) GetOwnerKind() string {
 }
 
 type DashboardView struct {
-	ID          string         `json:"id,omitempty"`
-	Title       string         `json:"title"`
-	WindowStyle *WindowStyle   `json:"windowStyle,omitempty"`
-	Rows        []DashboardRow `json:"rows"`
+	ID          string              `json:"id,omitempty"`
+	Title       string              `json:"title"`
+	WindowStyle *models.WindowStyle `json:"windowStyle,omitempty"`
+	Rows        []DashboardRow      `json:"rows"`
 }
 
 type DashboardRow struct {
@@ -66,21 +68,21 @@ type DashboardColumn struct {
 	// - "view":   { "multiTab": false, "diagrams": [...] } (native reuse form)
 	//
 	// Internally we normalize into ViewWindow so we reuse existing Diagram parsing/validation.
-	View ViewWindow `json:"view"`
+	View models.ViewWindow `json:"view"`
 }
 
 // Raw column decoding helper for accepting both "widget" and "view".
 type dashboardColumnRaw struct {
-	Width  *int        `json:"width,omitempty"`
-	JobID  string      `json:"jobId"`
-	Widget *Diagram    `json:"widget,omitempty"`
-	View   *ViewWindow `json:"view,omitempty"`
+	Width  *int               `json:"width,omitempty"`
+	JobID  string             `json:"jobId"`
+	Widget *models.Diagram    `json:"widget,omitempty"`
+	View   *models.ViewWindow `json:"view,omitempty"`
 }
 
 // Custom unmarshalling: if "widget" is present, wrap it as ViewWindow{MultiTab:false, Diagrams:[widget]}
 func (c *DashboardColumn) UnmarshalJSON(b []byte) error {
 	var raw dashboardColumnRaw
-	if err := decodeStrict(b, &raw); err != nil {
+	if err := utils.DecodeStrict(b, &raw); err != nil {
 		return err
 	}
 	if strings.TrimSpace(raw.JobID) == "" {
@@ -96,9 +98,9 @@ func (c *DashboardColumn) UnmarshalJSON(b []byte) error {
 		c.View = *raw.View
 		return nil
 	case raw.Widget != nil:
-		c.View = ViewWindow{
+		c.View = models.ViewWindow{
 			MultiTab: false,
-			Diagrams: []Diagram{*raw.Widget},
+			Diagrams: []models.Diagram{*raw.Widget},
 		}
 		return nil
 	default:
@@ -132,7 +134,7 @@ func LoadDashboardProject(path string) (*DashboardProject, error) {
 	}
 
 	var dp DashboardProject
-	if err := decodeStrict(data, &dp); err != nil {
+	if err := utils.DecodeStrict(data, &dp); err != nil {
 		return nil, fmt.Errorf("parse %q: %w", absPath, err)
 	}
 
@@ -166,7 +168,7 @@ func (dp *DashboardProject) Validate() error {
 	if strings.TrimSpace(dp.Title) == "" {
 		return fmt.Errorf("title is required")
 	}
-	if err := validateWindowStyle("windowStyle", dp.WindowStyle); err != nil {
+	if err := models.ValidateWindowStyle("windowStyle", dp.WindowStyle); err != nil {
 		return err
 	}
 	if len(dp.Views) == 0 {
@@ -185,7 +187,7 @@ func (v DashboardView) Validate(viewIndex int) error {
 	if strings.TrimSpace(v.Title) == "" {
 		return fmt.Errorf("title is required")
 	}
-	if err := validateWindowStyle("windowStyle", v.WindowStyle); err != nil {
+	if err := models.ValidateWindowStyle("windowStyle", v.WindowStyle); err != nil {
 		return err
 	}
 	if len(v.Rows) == 0 {

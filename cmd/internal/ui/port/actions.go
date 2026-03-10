@@ -1,11 +1,9 @@
 package port
 
-import vp "github.com/gclkaze/evamon/cmd/internal/viewproject"
-
 type DiagramActions interface {
-	Maximize(jobID string, d *vp.Diagram)
-	DownloadJSON(jobID string, d *vp.Diagram)
-	DownloadCSV(jobID string, d *vp.Diagram)
-	Filters(jobID string, d *vp.Diagram)
-	SetFilterEnabled(jobID string, d *vp.Diagram, enabled bool)
+	Maximize(jobID string, d IDiagram)
+	DownloadJSON(jobID string, d IDiagram)
+	DownloadCSV(jobID string, d IDiagram)
+	Filters(jobID string, d IDiagram)
+	SetFilterEnabled(jobID string, d IDiagram, enabled bool)
 }

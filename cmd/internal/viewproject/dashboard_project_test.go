@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	models "github.com/gclkaze/evamon/cmd/internal/models"
 )
 
 func writeTempJSON(t *testing.T, dir, name, json string) string {
@@ -105,12 +107,12 @@ func TestLoadDashboardProject_OK_WidgetColumns(t *testing.T) {
 	if len(c0.View.Diagrams) != 1 {
 		t.Fatalf("expected 1 diagram in normalized ViewWindow, got %d", len(c0.View.Diagrams))
 	}
-	if c0.View.Diagrams[0].Type != DiagramTypeBoolean {
+	if c0.View.Diagrams[0].Type != models.DiagramTypeBoolean {
 		t.Fatalf("expected boolean diagram, got %q", c0.View.Diagrams[0].Type)
 	}
 
 	c1 := v.Rows[0].Columns[1]
-	if len(c1.View.Diagrams) != 1 || c1.View.Diagrams[0].Type != DiagramTypeBar {
+	if len(c1.View.Diagrams) != 1 || c1.View.Diagrams[0].Type != models.DiagramTypeBar {
 		t.Fatalf("expected 1 bar diagram, got diagrams=%d type=%q", len(c1.View.Diagrams), c1.View.Diagrams[0].Type)
 	}
 }
@@ -168,7 +170,7 @@ func TestLoadDashboardProject_OK_ViewColumns(t *testing.T) {
 	if col.JobID != "job-1" {
 		t.Fatalf("expected job-1, got %q", col.JobID)
 	}
-	if len(col.View.Diagrams) != 1 || col.View.Diagrams[0].Type != DiagramTypeBoolean {
+	if len(col.View.Diagrams) != 1 || col.View.Diagrams[0].Type != models.DiagramTypeBoolean {
 		t.Fatalf("expected boolean diagram in view, got %v", col.View.Diagrams)
 	}
 }

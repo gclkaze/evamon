@@ -1,4 +1,4 @@
-package viewproject
+package models
 
 type DiagramOwner interface {
 	GetProjectBase() *ProjectBase

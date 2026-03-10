@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/gclkaze/evamon/cmd/internal/models"
 	window "github.com/gclkaze/evamon/cmd/internal/ui/chart"
 	draw "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
@@ -55,7 +56,7 @@ func (inst *ProjectUIHolder) Create() error {
 
 	inst.isMultitab = inst.vp.View.MultiTab
 
-	var windowStyle *viewproject.WindowStyle
+	var windowStyle *models.WindowStyle
 	var height *float32
 	var width *float32
 
@@ -92,7 +93,7 @@ func (inst *ProjectUIHolder) Run() {
 	inst.renderer.Run()
 }
 
-func (inst *ProjectUIHolder) setupAndBuildMultiTabbedDiagramWindow(diagrams []viewproject.Diagram, width *float32, height *float32) ([]port.ExecutionWindow, error) {
+func (inst *ProjectUIHolder) setupAndBuildMultiTabbedDiagramWindow(diagrams []models.Diagram, width *float32, height *float32) ([]port.ExecutionWindow, error) {
 
 	var ws []port.ExecutionWindow
 	for i := range diagrams {
@@ -108,7 +109,7 @@ func (inst *ProjectUIHolder) setupAndBuildMultiTabbedDiagramWindow(diagrams []vi
 	return ws, nil
 }
 
-func (inst *ProjectUIHolder) setupAndBuildDiagramsMultiTabed(diagram viewproject.Diagram, width *float32, height *float32) (port.ExecutionWindow, error) {
+func (inst *ProjectUIHolder) setupAndBuildDiagramsMultiTabed(diagram models.Diagram, width *float32, height *float32) (port.ExecutionWindow, error) {
 	theSetupItems := diagram.Setup
 	w, err := inst.renderer.NewExecutionWindow("")
 	if err != nil {
@@ -135,7 +136,7 @@ func (inst *ProjectUIHolder) GetProjectID() string {
 	return inst.vp.ID
 }
 
-func (inst *ProjectUIHolder) setupAndBuildDiagrams(diagram viewproject.Diagram, windowStyle *viewproject.WindowStyle, width *float32, height *float32) ([]port.ExecutionWindow, error) {
+func (inst *ProjectUIHolder) setupAndBuildDiagrams(diagram models.Diagram, windowStyle *models.WindowStyle, width *float32, height *float32) ([]port.ExecutionWindow, error) {
 	theSetupItems := diagram.Setup
 	var ws []port.ExecutionWindow
 	for j := range theSetupItems {
@@ -174,7 +175,7 @@ func (inst *ProjectUIHolder) RegisterVariableDrawerUnsubscriber(variableName str
 	inst.mu.Unlock()
 }
 
-func (inst *ProjectUIHolder) styleWindow(window port.ExecutionWindow, w *float32, h *float32, setup *viewproject.SetupItem, windowStyle *viewproject.WindowStyle) port.ExecutionWindow {
+func (inst *ProjectUIHolder) styleWindow(window port.ExecutionWindow, w *float32, h *float32, setup *models.SetupItem, windowStyle *models.WindowStyle) port.ExecutionWindow {
 
 	if setup.WindowStyle != nil {
 		w = setup.WindowStyle.Width

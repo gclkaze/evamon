@@ -7,8 +7,9 @@ package ui
 )*/
 
 import (
+	"github.com/gclkaze/evamon/cmd/internal/models"
+	dia "github.com/gclkaze/evamon/cmd/internal/ui/port"
 	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
-	vp "github.com/gclkaze/evamon/cmd/internal/viewproject"
 )
 
 type DefaultDiagramToolbarFactory struct {
@@ -17,14 +18,15 @@ type DefaultDiagramToolbarFactory struct {
 	Actions  uport.DiagramActions
 }
 
-func primarySetupItem(d *vp.Diagram) *vp.SetupItem {
-	if d == nil || len(d.Setup) == 0 {
+func primarySetupItem(d dia.IDiagram) *models.SetupItem {
+	setups := d.GetSetup()
+	if d == nil || len(setups) == 0 {
 		return nil
 	}
-	return &d.Setup[0]
+	return &setups[0]
 }
 
-func (f *DefaultDiagramToolbarFactory) Build(jobID string, d *vp.Diagram) uport.UIObject {
+func (f *DefaultDiagramToolbarFactory) Build(jobID string, d dia.IDiagram) uport.UIObject {
 	if d == nil {
 		return nil
 	}
@@ -70,22 +72,22 @@ func (f *DefaultDiagramToolbarFactory) Build(jobID string, d *vp.Diagram) uport.
 	return f.Layout.HBox(children...)
 }
 
-func diagramTitle(d *vp.Diagram) string {
+func diagramTitle(d dia.IDiagram) string {
 	if d == nil {
 		return ""
 	}
-
-	if d.Setup == nil {
+	setups := d.GetSetup()
+	if setups == nil {
 		return ""
 	}
 
-	if len(d.Setup) == 0 {
+	if len(setups) == 0 {
 		return ""
 	}
 
-	if d.Setup[0].Title != "" {
-		return d.Setup[0].Title
+	if setups[0].Title != "" {
+		return setups[0].Title
 	}
 
-	return string(d.Type)
+	return string(d.GetType())
 }

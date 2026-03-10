@@ -11,7 +11,8 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
-	viewproject "github.com/gclkaze/evamon/cmd/internal/viewproject"
+	"github.com/gclkaze/evamon/cmd/internal/models"
+	dia "github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
 type FilterEditor struct {
@@ -34,22 +35,22 @@ type FilterEditor struct {
 	saveBtn   *widget.Button
 	cancelBtn *widget.Button
 
-	components []viewproject.FilterComponent
-	mode       viewproject.FilterMode
+	components []models.FilterComponent
+	mode       models.FilterMode
 
-	diagram *viewproject.Diagram
+	diagram dia.IDiagram
 
 	validateFn func(string) error
-	saveFn     func(*viewproject.Filter, *viewproject.Diagram) error
+	saveFn     func(*models.Filter, dia.IDiagram) error
 	cancelFn   func()
 }
 
 func NewFilterEditor(
 	title string,
-	initial *viewproject.Filter,
-	diagram *viewproject.Diagram,
+	initial *models.Filter,
+	diagram dia.IDiagram,
 	validateFn func(string) error,
-	saveFn func(*viewproject.Filter, *viewproject.Diagram) error,
+	saveFn func(*models.Filter, dia.IDiagram) error,
 	cancelFn func(),
 ) *FilterEditor {
 	fe := &FilterEditor{
@@ -72,22 +73,22 @@ func (fe *FilterEditor) Object() fyne.CanvasObject {
 	return fe.root
 }
 
-func (fe *FilterEditor) CurrentFilter() *viewproject.Filter {
+func (fe *FilterEditor) CurrentFilter() *models.Filter {
 	if len(fe.components) == 0 {
 		return nil
 	}
 
-	return &viewproject.Filter{
+	return &models.Filter{
 		Enabled: fe.filterEnabled,
-		Setup: &viewproject.FilterSetup{
+		Setup: &models.FilterSetup{
 			Mode:       fe.mode,
 			Components: fe.cloneComponents(),
 		},
 	}
 }
 
-func (fe *FilterEditor) loadInitial(initial *viewproject.Filter) {
-	fe.mode = viewproject.FilterModeAND
+func (fe *FilterEditor) loadInitial(initial *models.Filter) {
+	fe.mode = models.FilterModeAND
 	fe.components = nil
 	fe.filterEnabled = false
 
@@ -97,9 +98,9 @@ func (fe *FilterEditor) loadInitial(initial *viewproject.Filter) {
 	fe.filterEnabled = initial.Enabled
 	fe.mode = initial.Setup.Mode
 	if fe.mode == "" {
-		fe.mode = viewproject.FilterModeAND
+		fe.mode = models.FilterModeAND
 	}
-	fe.components = append([]viewproject.FilterComponent(nil), initial.Setup.Components...)
+	fe.components = append([]models.FilterComponent(nil), initial.Setup.Components...)
 }
 
 func (fe *FilterEditor) initWidgets(title string) {
@@ -202,18 +203,18 @@ func (fe *FilterEditor) buildInputRow() fyne.CanvasObject {
 }
 
 func (fe *FilterEditor) setModeSelection() {
-	if fe.mode == viewproject.FilterModeOR {
+	if fe.mode == models.FilterModeOR {
 		fe.modeRadio.SetSelected("OR")
 		return
 	}
 	fe.modeRadio.SetSelected("AND")
 }
 
-func (fe *FilterEditor) parseMode(v string) viewproject.FilterMode {
+func (fe *FilterEditor) parseMode(v string) models.FilterMode {
 	if strings.EqualFold(strings.TrimSpace(v), "OR") {
-		return viewproject.FilterModeOR
+		return models.FilterModeOR
 	}
-	return viewproject.FilterModeAND
+	return models.FilterModeAND
 }
 
 func (fe *FilterEditor) onAdd() {
@@ -227,7 +228,7 @@ func (fe *FilterEditor) onAdd() {
 		return
 	}
 
-	fe.components = append(fe.components, viewproject.FilterComponent{
+	fe.components = append(fe.components, models.FilterComponent{
 		ID:         "",
 		Expression: expr,
 		Enabled:    true,
@@ -316,7 +317,7 @@ func (fe *FilterEditor) rebuildRows() {
 	fe.rowsBox.Refresh()
 }
 
-func (fe *FilterEditor) buildExpressionRow(idx int, c viewproject.FilterComponent) fyne.CanvasObject {
+func (fe *FilterEditor) buildExpressionRow(idx int, c models.FilterComponent) fyne.CanvasObject {
 	check := widget.NewCheck("enabled", func(v bool) {
 		if idx < 0 || idx >= len(fe.components) {
 			return
@@ -339,11 +340,11 @@ func (fe *FilterEditor) buildExpressionRow(idx int, c viewproject.FilterComponen
 	)
 }
 
-func (fe *FilterEditor) cloneComponents() []viewproject.FilterComponent {
+func (fe *FilterEditor) cloneComponents() []models.FilterComponent {
 	if len(fe.components) == 0 {
 		return nil
 	}
-	out := make([]viewproject.FilterComponent, len(fe.components))
+	out := make([]models.FilterComponent, len(fe.components))
 	copy(out, fe.components)
 	return out
 }
