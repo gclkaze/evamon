@@ -10,6 +10,7 @@ import (
 
 // Diagram contains a typed union for setup items based on Diagram.Type.
 type Diagram struct {
+	ID    string       `json:"id"`
 	Owner DiagramOwner `json:"-"`
 	Type  DiagramType  `json:"type"`
 	Setup []SetupItem  `json:"setup"`
@@ -25,6 +26,14 @@ func (d Diagram) GetName() string {
 	}
 
 	return d.Setup[0].Title
+}
+
+func (d Diagram) GetID() string {
+	return d.ID
+}
+
+func (d *Diagram) SetID(ID string) {
+	d.ID = ID
 }
 
 type DiagramType string
@@ -429,4 +438,30 @@ func parseStyleForDiagramType(t DiagramType, raw json.RawMessage) (Style, error)
 	default:
 		return nil, fmt.Errorf("unsupported diagram type %q", string(t))
 	}
+}
+
+func EnsureDiagramIDsInViewWindow(vw *ViewWindow, seen map[string]struct{}) bool {
+	if vw == nil {
+		return false
+	}
+
+	modified := false
+
+	for i := range vw.Diagrams {
+		id := vw.Diagrams[i].GetID()
+
+		if id == "" {
+			id = newUniqueDiagramID(seen)
+			vw.Diagrams[i].SetID(id)
+			modified = true
+		} else if _, exists := seen[id]; exists {
+			id = newUniqueDiagramID(seen)
+			vw.Diagrams[i].SetID(id)
+			modified = true
+		}
+
+		seen[id] = struct{}{}
+	}
+
+	return modified
 }

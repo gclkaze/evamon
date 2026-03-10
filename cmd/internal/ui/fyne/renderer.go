@@ -11,16 +11,18 @@ type Renderer struct {
 	a fyne.App
 	l port.Layout
 
-	c       port.Controls
-	actions port.DiagramActions
+	c        port.Controls
+	actions  port.DiagramActions
+	registry *port.ChartRegistry
 }
 
 func New() *Renderer {
 	return &Renderer{
-		a:       app.New(),
-		l:       Layout{},
-		c:       Controls{},
-		actions: DiagramActionHandler{},
+		a:        app.New(),
+		l:        Layout{},
+		c:        Controls{},
+		actions:  DiagramActionHandler{},
+		registry: port.NewChartRegistry(),
 	}
 }
 
@@ -39,3 +41,8 @@ func (r *Renderer) Controls() port.Controls {
 func (r *Renderer) Actions() port.DiagramActions {
 	return r.actions
 }
+
+/*
+func (r *Renderer) GetDiagram(id string) *port.ChartRegistry {
+	return r.registry.
+}*/

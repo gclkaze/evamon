@@ -143,10 +143,36 @@ func LoadDashboardProject(path string) (*DashboardProject, error) {
 	if err := dp.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid dashboard %q: %w", absPath, err)
 	}
+	modified := dp.EnsureDiagramIDs()
+	if modified {
+		if err := fs.SaveProjectJSON(dp.ProjectPath, &dp); err != nil {
+			return nil, fmt.Errorf("save normalized dashboard %q: %w", absPath, err)
+		}
+	}
 
 	return &dp, nil
 }
+func (dp *DashboardProject) EnsureDiagramIDs() bool {
+	if dp == nil {
+		return false
+	}
 
+	modified := false
+	seen := make(map[string]struct{})
+
+	for vi := range dp.Views {
+		for ri := range dp.Views[vi].Rows {
+			for ci := range dp.Views[vi].Rows[ri].Columns {
+				view := &dp.Views[vi].Rows[ri].Columns[ci].View
+				if models.EnsureDiagramIDsInViewWindow(view, seen) {
+					modified = true
+				}
+			}
+		}
+	}
+
+	return modified
+}
 func (dp *DashboardProject) Save() error {
 	if dp == nil {
 		return fmt.Errorf("dashboard project is nil")

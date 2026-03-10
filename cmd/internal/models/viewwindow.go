@@ -2,6 +2,8 @@ package models
 
 import (
 	"fmt"
+
+	"github.com/gclkaze/evamon/pkg/utils"
 )
 
 type ViewWindow struct {
@@ -26,6 +28,37 @@ func (vw ViewWindow) Validate() error {
 	}
 	return nil
 }
+func EnsureDiagramIDs(diagrams []Diagram) bool {
+	modified := false
+	seen := make(map[string]struct{})
+
+	for i := range diagrams {
+		id := diagrams[i].GetID()
+
+		if id == "" {
+			id = newUniqueDiagramID(seen)
+			diagrams[i].SetID(id)
+			modified = true
+		} else if _, exists := seen[id]; exists {
+			id = newUniqueDiagramID(seen)
+			diagrams[i].SetID(id)
+			modified = true
+		}
+
+		seen[id] = struct{}{}
+	}
+
+	return modified
+}
+func newUniqueDiagramID(seen map[string]struct{}) string {
+	for {
+		id := utils.GetRandomString()
+		if _, exists := seen[id]; !exists {
+			return id
+		}
+	}
+}
+
 func ValidateWindowStyle(path string, ws *WindowStyle) error {
 	if ws == nil {
 		return nil
