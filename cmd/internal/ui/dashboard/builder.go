@@ -136,6 +136,7 @@ func (b *Builder) buildDiagramForJob(jobID string, d *models.Diagram) (uport.UIO
 
 	toolbar := b.ToolbarFactory.Build(jobID, d)
 	ref.Toolbar = toolbar
+	ref.RegisterToolbar(toolbar)
 
 	panel := b.wrapWithDiagramPanel(toolbar, content)
 	ref.Panel = panel
@@ -321,6 +322,7 @@ func (b *Builder) buildBooleanDiagram(jobID string, d *models.Diagram, ref *port
 	parts = append(parts, legendObj)
 
 	ref.Legend = legendObj
+	ref.RegisterLegend(legendObj)
 
 	for si := range d.Setup {
 		s := d.Setup[si]
@@ -378,6 +380,7 @@ func (b *Builder) buildBarDiagram(jobID string, d *models.Diagram, ref *port.Dia
 			Variable: s.Variable,
 			Sink:     w,
 		})
+		ref.RegisterMainChart(w)
 	}
 	legendObj := b.Layout.DiagramLegend(theItems, func(it *port.LegendItem) {
 		if len(theItems) == 1 {
@@ -386,6 +389,7 @@ func (b *Builder) buildBarDiagram(jobID string, d *models.Diagram, ref *port.Dia
 		w.ToggleItem(it)
 	})
 	ref.Legend = legendObj
+	ref.RegisterLegend(legendObj)
 	parts = append([]uport.UIObject{legendObj}, parts...)
 
 	return b.Layout.VBox(parts...), bindings, nil
@@ -425,6 +429,7 @@ func (b *Builder) buildLineDiagram(jobID string, d *models.Diagram, ref *port.Di
 		w.ToggleItem(it)
 	})
 	ref.Legend = legendObj
+	ref.RegisterLegend(legendObj)
 	parts = append([]uport.UIObject{legendObj}, parts...)
 
 	return b.Layout.VBox(parts...), bindings, nil

@@ -12,23 +12,6 @@ import (
 	"golang.org/x/image/colornames"
 )
 
-/*func wrapWithDiagramPanel(toolbar, content port.UIObject, renderer port.Renderer) port.UIObject {
-	if toolbar == nil {
-		return content
-	}
-	if content == nil {
-		return toolbar
-	}
-
-	return renderer.Layout().Border(
-		toolbar,
-		nil,
-		nil,
-		nil,
-		content,
-	)
-}*/
-
 func BuildDiagramContent(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w port.ExecutionWindow, setup models.SetupItem, width, height float32, maxPoints int, t models.DiagramType, ref *port.DiagramUIRefs) draw.DiagramWidget {
 	switch t {
 	case models.DiagramTypeBoolean:
@@ -70,9 +53,13 @@ func BuildDiagram(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w
 
 	renderer.ChartRegistry().Register(ref)
 	toolbar := tf.Build("", diagram)
+	ref.RegisterToolbar(toolbar)
 	ref.Toolbar = toolbar
 	ref.ID = diagram.ID
 	ref.Legend = legendObj
+	ref.RegisterLegend(legendObj)
+	ref.RegisterMainChart(drawer)
+
 	//	panel := wrapWithDiagramPanel(toolbar, content)
 	fmt.Println("Registering " + ref.ID)
 	fmt.Printf("Size of Registry is %d \n", renderer.ChartRegistry().Size())
