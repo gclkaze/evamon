@@ -18,6 +18,7 @@ type DiagramActionHandler struct {
 	// ExportService
 	// Filter validator / parser
 	// Project saver
+	ChartRegistry *dia.ChartRegistry
 }
 
 func (h DiagramActionHandler) Maximize(jobID string, d port.IDiagram) {
@@ -45,6 +46,16 @@ func (h DiagramActionHandler) SetFilterEnabled(jobID string, d port.IDiagram, en
 	}
 
 	setupItem.Filter.Enabled = enabled
+
+	owner := d.GetDiagramOwner()
+	switch p := owner.(type) {
+	case *vp.ViewProject:
+		p.Save()
+	case *vp.DashboardProject:
+		p.Save()
+	default:
+
+	}
 
 	// TODO: persist project/config if needed
 	// TODO: trigger chart refresh/re-filter if needed
@@ -75,6 +86,10 @@ func (h DiagramActionHandler) Filters(jobID string, d port.IDiagram) {
 		func(f *models.Filter, d dia.IDiagram) error {
 			if err := h.saveFilters(jobID, setupItem, f, d); err != nil {
 				return err
+			}
+
+			if refs, ok := h.ChartRegistry.Get(d.GetID()); ok {
+				refs.RebuildToolbar()
 			}
 			win.Close()
 			return nil

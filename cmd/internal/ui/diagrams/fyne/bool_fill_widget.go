@@ -46,6 +46,10 @@ type boolFillWidgetRenderer struct {
 	objs []fyne.CanvasObject
 }
 
+func (w *BoolFillWidget) Refresh() {
+	//	w.drawer.Refresh()
+}
+
 func (w *BoolFillWidget) Push(at time.Time, val any) {
 	w.drawer.Push(at, val)
 }

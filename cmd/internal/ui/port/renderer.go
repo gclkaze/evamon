@@ -9,4 +9,5 @@ type Renderer interface {
 	Run()
 	Controls() Controls
 	Actions() DiagramActions
+	ChartRegistry() *ChartRegistry
 }

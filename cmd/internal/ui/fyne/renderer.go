@@ -17,12 +17,13 @@ type Renderer struct {
 }
 
 func New() *Renderer {
+	cr := port.NewChartRegistry()
 	return &Renderer{
 		a:        app.New(),
 		l:        Layout{},
 		c:        Controls{},
-		actions:  DiagramActionHandler{},
-		registry: port.NewChartRegistry(),
+		actions:  DiagramActionHandler{ChartRegistry:cr},
+		registry: cr,
 	}
 }
 
@@ -40,6 +41,10 @@ func (r *Renderer) Controls() port.Controls {
 
 func (r *Renderer) Actions() port.DiagramActions {
 	return r.actions
+}
+
+func (r *Renderer) ChartRegistry() *port.ChartRegistry {
+	return r.registry
 }
 
 /*

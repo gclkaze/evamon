@@ -29,16 +29,20 @@ import (
 	)
 }*/
 
-func BuildDiagramContent(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w port.ExecutionWindow, setup models.SetupItem, width, height float32, maxPoints int, t models.DiagramType) draw.DiagramWidget {
+func BuildDiagramContent(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w port.ExecutionWindow, setup models.SetupItem, width, height float32, maxPoints int, t models.DiagramType, ref *port.DiagramUIRefs) draw.DiagramWidget {
 	switch t {
 	case models.DiagramTypeBoolean:
 		boolFill := buildBooleanDiagram(holder, drawerFactory, setup, width, height)
+		ref.Chart = boolFill
 		return boolFill
 	case models.DiagramTypeBar:
 		barChart := buildBarchart(holder, drawerFactory, setup, width, height, maxPoints)
+		ref.Chart = barChart
+
 		return barChart
 	case models.DiagramTypeLine:
 		lineChart := buildLinechart(holder, drawerFactory, setup, width, height, maxPoints)
+		ref.Chart = lineChart
 		return lineChart
 	}
 	return nil
@@ -50,7 +54,9 @@ func BuildDiagram(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w
 	vars := CollectVariables(diagram)
 	theItems := VariableStylesToLegendItems(vars)
 
-	drawer := BuildDiagramContent(holder, drawerFactory, w, setup, width, height, maxPoints, diagram.Type)
+	ref := port.NewDiagramUIRefs(diagram.ID, holder.GetRenderer())
+
+	drawer := BuildDiagramContent(holder, drawerFactory, w, setup, width, height, maxPoints, diagram.Type, ref)
 
 	l := renderer.Layout()
 	legendObj := l.DiagramLegend(theItems, func(it *port.LegendItem) {
@@ -60,14 +66,18 @@ func BuildDiagram(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w
 		drawer.ToggleItem(it)
 	})
 
-	tf := &ui.DefaultDiagramToolbarFactory{
-		Layout:   holder.GetRenderer().Layout(),
-		Controls: holder.GetRenderer().Controls(),
-		Actions:  holder.GetRenderer().Actions(),
-	}
+	tf := ui.NewDiagramToolbarFactor(holder.GetRenderer())
 
+	renderer.ChartRegistry().Register(ref)
 	toolbar := tf.Build("", diagram)
+	ref.Toolbar = toolbar
+	ref.ID = diagram.ID
+	ref.Legend = legendObj
 	//	panel := wrapWithDiagramPanel(toolbar, content)
+	fmt.Println("Registering " + ref.ID)
+	fmt.Printf("Size of Registry is %d \n", renderer.ChartRegistry().Size())
+
+	fmt.Printf("Size of Registry is %d \n", renderer.ChartRegistry().Size())
 
 	c := l.Border(legendObj, toolbar, nil, nil, drawer)
 	w.SetContent(c)

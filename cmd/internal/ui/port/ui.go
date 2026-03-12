@@ -6,6 +6,7 @@ type UIObject interface {
 	Title() string
 	Description() string
 	ToggleItem(*LegendItem)
+	Refresh()
 }
 
 type TabItem interface {
@@ -39,6 +40,8 @@ type Layout interface {
 	// NEW primitives
 	HBox(children ...UIObject) UIObject
 	Spacer() UIObject
+
+	ReplaceHBoxContent(hbox UIObject, children ...UIObject)
 
 	// NEW: legend for multi-variable diagrams.
 	// If onClick is nil => non-interactive.

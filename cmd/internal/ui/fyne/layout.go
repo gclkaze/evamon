@@ -71,6 +71,16 @@ func (Layout) Tab(title string, content port.UIObject) port.TabItem {
 	return fyneTab{t: container.NewTabItem(title, unwrap(content))}
 }
 
+func (Layout) ReplaceHBoxContent(hbox port.UIObject, children ...port.UIObject) {
+	c := unwrap(hbox).(*fyne.Container)
+	objs := make([]fyne.CanvasObject, 0, len(children))
+	for _, child := range children {
+		objs = append(objs, unwrap(child))
+	}
+	c.Objects = objs
+	c.Refresh()
+}
+
 func (Layout) Tabs(items ...port.TabItem) port.UIObject {
 	tabs := container.NewAppTabs()
 	for _, it := range items {

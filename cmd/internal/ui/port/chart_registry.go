@@ -9,6 +9,10 @@ func NewChartRegistry() *ChartRegistry {
 		byID: make(map[string]*DiagramUIRefs),
 	}
 }
+
+func (r ChartRegistry) Size() int {
+	return len(r.byID)
+}
 func (r *ChartRegistry) Register(refs *DiagramUIRefs) {
 	if refs == nil || refs.ID == "" {
 		return

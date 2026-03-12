@@ -44,13 +44,8 @@ func (inst *DashboardUIHolder) Create(dp *viewproject.DashboardProject) error {
 	if err != nil {
 		return err
 	}
-	layout := inst.renderer.Layout()
-	tf := &ui.DefaultDiagramToolbarFactory{
-		Layout:   inst.renderer.Layout(),
-		Controls: inst.renderer.Controls(),
-		Actions:  inst.renderer.Actions(),
-	}
-	builder := dashboardbuilder.New(layout, inst.drawerFactory, tf)
+	tf := ui.NewDiagramToolbarFactor(inst.renderer)
+	builder := dashboardbuilder.New(inst.drawerFactory, tf, inst.renderer)
 
 	res, err := builder.BuildDashboard(dp)
 	if err != nil {

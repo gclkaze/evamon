@@ -34,6 +34,10 @@ func (w *BarChartWidget) ToggleItem(it *port.LegendItem) {
 	w.drawer.ToggleItem(it)
 }
 
+func (w *BarChartWidget) Refresh() {
+//	w.drawer.Refresh()
+}
+
 func (w *BarChartWidget) Native() any { return w }
 func (w *BarChartWidget) CreateRenderer() fyne.WidgetRenderer {
 	root := w.drawer.Root()

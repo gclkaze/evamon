@@ -32,6 +32,9 @@ type Builder struct {
 	Layout         uport.Layout
 	Factory        dport.Factory // NewBoolFill / NewBarChart etc.
 	ToolbarFactory dport.DiagramToolbarFactory
+	chartRegistry  *port.ChartRegistry
+
+	renderer       port.Renderer
 	MinChartWidth  float32
 	MinChartHeight float32
 
@@ -41,9 +44,10 @@ type Builder struct {
 	DefaultMaxPoints int
 }
 
-func New(layout uport.Layout, factory dport.Factory, toolbarFactory dport.DiagramToolbarFactory) *Builder {
+func New( /*layout, */ factory dport.Factory, toolbarFactory dport.DiagramToolbarFactory /*, inst.renderer.ChartRegistry()*/, renderer port.Renderer) *Builder { //(layout uport.Layout, factory dport.Factory, toolbarFactory dport.DiagramToolbarFactory, chartRegistry *port.ChartRegistry) *Builder {
+
 	return &Builder{
-		Layout:         layout,
+		Layout:         renderer.Layout(),
 		Factory:        factory,
 		ToolbarFactory: toolbarFactory,
 
@@ -54,6 +58,8 @@ func New(layout uport.Layout, factory dport.Factory, toolbarFactory dport.Diagra
 		MinChartBooleanHeight: 100,
 
 		DefaultMaxPoints: 1000,
+		chartRegistry:    renderer.ChartRegistry(),
+		renderer:         renderer,
 	}
 }
 
@@ -109,13 +115,15 @@ func (b *Builder) buildDiagramForJob(jobID string, d *models.Diagram) (uport.UIO
 		err      error
 	)
 
+	ref := port.NewDiagramUIRefs(d.ID, b.renderer)
+
 	switch d.Type {
 	case models.DiagramTypeBoolean:
-		content, bindings, err = b.buildBooleanDiagram(jobID, d)
+		content, bindings, err = b.buildBooleanDiagram(jobID, d, ref)
 	case models.DiagramTypeBar:
-		content, bindings, err = b.buildBarDiagram(jobID, d)
+		content, bindings, err = b.buildBarDiagram(jobID, d, ref)
 	case models.DiagramTypeLine:
-		content, bindings, err = b.buildLineDiagram(jobID, d)
+		content, bindings, err = b.buildLineDiagram(jobID, d, ref)
 	default:
 		return nil, nil, fmt.Errorf("unsupported diagram type %q", d.Type)
 	}
@@ -124,8 +132,14 @@ func (b *Builder) buildDiagramForJob(jobID string, d *models.Diagram) (uport.UIO
 		return nil, nil, err
 	}
 
+	b.chartRegistry.Register(ref)
+
 	toolbar := b.ToolbarFactory.Build(jobID, d)
+	ref.Toolbar = toolbar
+
 	panel := b.wrapWithDiagramPanel(toolbar, content)
+	ref.Panel = panel
+	ref.ID = d.GetID()
 
 	return panel, bindings, nil
 }
@@ -252,13 +266,15 @@ func (b *Builder) buildDiagramForJobWithTitle(jobID string, d *models.Diagram) (
 		bindings []BindingTarget
 		err      error
 	)
+	ref := port.NewDiagramUIRefs(d.ID, b.renderer)
+
 	switch d.Type {
 	case models.DiagramTypeBoolean:
-		content, bindings, err = b.buildBooleanDiagram(jobID, d)
+		content, bindings, err = b.buildBooleanDiagram(jobID, d, ref)
 	case models.DiagramTypeBar:
-		content, bindings, err = b.buildBarDiagram(jobID, d)
+		content, bindings, err = b.buildBarDiagram(jobID, d, ref)
 	case models.DiagramTypeLine:
-		content, bindings, err = b.buildLineDiagram(jobID, d)
+		content, bindings, err = b.buildLineDiagram(jobID, d, ref)
 	default:
 		return nil, nil, fmt.Errorf("unsupported diagram type %q", d.Type)
 	}
@@ -266,8 +282,12 @@ func (b *Builder) buildDiagramForJobWithTitle(jobID string, d *models.Diagram) (
 	if err != nil {
 		return nil, nil, err
 	}
+	panel := b.wrapWithDiagramTitle(jobID, d, content)
+	ref.ID = d.GetID()
+	ref.Panel = panel
+	b.chartRegistry.Register(ref)
 
-	return b.wrapWithDiagramTitle(jobID, d, content), bindings, nil
+	return panel, bindings, nil
 }
 
 func (b *Builder) wrapWithDiagramTitle(jobID string, d *models.Diagram, content uport.UIObject) uport.UIObject {
@@ -291,7 +311,7 @@ func (b *Builder) wrapWithDiagramTitle(jobID string, d *models.Diagram, content 
 	return b.Layout.Card(title, "", content)
 }
 
-func (b *Builder) buildBooleanDiagram(jobID string, d *models.Diagram) (uport.UIObject, []BindingTarget, error) {
+func (b *Builder) buildBooleanDiagram(jobID string, d *models.Diagram, ref *port.DiagramUIRefs) (uport.UIObject, []BindingTarget, error) {
 	var parts []uport.UIObject
 	var bindings []BindingTarget
 
@@ -299,6 +319,8 @@ func (b *Builder) buildBooleanDiagram(jobID string, d *models.Diagram) (uport.UI
 	theItems := window.VariableStylesToLegendItems(vars)
 	legendObj := b.Layout.DiagramLegend(theItems, nil)
 	parts = append(parts, legendObj)
+
+	ref.Legend = legendObj
 
 	for si := range d.Setup {
 		s := d.Setup[si]
@@ -315,6 +337,8 @@ func (b *Builder) buildBooleanDiagram(jobID string, d *models.Diagram) (uport.UI
 		if err != nil {
 			return nil, nil, err
 		}
+
+		ref.Chart = w
 		parts = append(parts, w)
 		bindings = append(bindings, BindingTarget{
 			JobID:    jobID,
@@ -330,7 +354,7 @@ func (b *Builder) buildBooleanDiagram(jobID string, d *models.Diagram) (uport.UI
 	return b.Layout.VBox(parts...), bindings, nil
 }
 
-func (b *Builder) buildBarDiagram(jobID string, d *models.Diagram) (uport.UIObject, []BindingTarget, error) {
+func (b *Builder) buildBarDiagram(jobID string, d *models.Diagram, ref *port.DiagramUIRefs) (uport.UIObject, []BindingTarget, error) {
 	var parts []uport.UIObject
 	var bindings []BindingTarget
 
@@ -347,6 +371,7 @@ func (b *Builder) buildBarDiagram(jobID string, d *models.Diagram) (uport.UIObje
 		if err != nil {
 			return nil, nil, err
 		}
+		ref.Chart = w
 		parts = append(parts, w)
 		bindings = append(bindings, BindingTarget{
 			JobID:    jobID,
@@ -360,13 +385,13 @@ func (b *Builder) buildBarDiagram(jobID string, d *models.Diagram) (uport.UIObje
 		}
 		w.ToggleItem(it)
 	})
-
+	ref.Legend = legendObj
 	parts = append([]uport.UIObject{legendObj}, parts...)
 
 	return b.Layout.VBox(parts...), bindings, nil
 }
 
-func (b *Builder) buildLineDiagram(jobID string, d *models.Diagram) (uport.UIObject, []BindingTarget, error) {
+func (b *Builder) buildLineDiagram(jobID string, d *models.Diagram, ref *port.DiagramUIRefs) (uport.UIObject, []BindingTarget, error) {
 	var parts []uport.UIObject
 	var bindings []BindingTarget
 
@@ -385,6 +410,7 @@ func (b *Builder) buildLineDiagram(jobID string, d *models.Diagram) (uport.UIObj
 		}
 
 		parts = append(parts, w)
+		ref.Chart = w
 		bindings = append(bindings, BindingTarget{
 			JobID:    jobID,
 			Variable: s.Variable,
@@ -398,6 +424,7 @@ func (b *Builder) buildLineDiagram(jobID string, d *models.Diagram) (uport.UIObj
 		}
 		w.ToggleItem(it)
 	})
+	ref.Legend = legendObj
 	parts = append([]uport.UIObject{legendObj}, parts...)
 
 	return b.Layout.VBox(parts...), bindings, nil

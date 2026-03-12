@@ -4,7 +4,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
-	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
 type fyneObj struct {
@@ -17,6 +16,10 @@ func (x fyneObj) Native() any   { return x.o }
 func (x fyneObj) Title() string { return x.title }
 func (x fyneObj) ToggleItem(it *port.LegendItem) {
 	//x.ToggleItem(it)
+}
+
+func (x fyneObj) Refresh() {
+	x.o.Refresh()
 }
 func (x fyneObj) Description() string { return x.description }
 
@@ -32,10 +35,10 @@ func (x fyneTab) Native() any         { return x.t }
 func (x fyneTab) Title() string       { return x.title }
 func (x fyneTab) Description() string { return x.description }
 
-func wrap(o fyne.CanvasObject) uport.UIObject {
+func wrap(o fyne.CanvasObject) port.UIObject {
 	return fyneObj{o: o}
 }
 
-func unwrap(obj uport.UIObject) fyne.CanvasObject {
+func unwrap(obj port.UIObject) fyne.CanvasObject {
 	return obj.Native().(fyne.CanvasObject)
 }
