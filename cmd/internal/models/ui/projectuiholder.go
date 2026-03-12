@@ -123,7 +123,7 @@ func (inst *ProjectUIHolder) setupAndBuildDiagramsMultiTabed(diagram models.Diag
 		tabID := strconv.Itoa(j)
 		w.UpsertTab(tabID, title)
 
-		content := window.BuildDiagramContent(inst, inst.drawerFactory, w, setup, inst.MinChartWidth, inst.MinChartHeight, inst.defaultMaxPoints, diagram.Type, ref)
+		content := window.BuildDiagramContent(inst, inst.drawerFactory, w, setup, inst.MinChartWidth, inst.MinChartHeight, inst.defaultMaxPoints, diagram.Type, ref, &diagram)
 		w.AssignTab(tabID, content)
 		w.Show()
 	}

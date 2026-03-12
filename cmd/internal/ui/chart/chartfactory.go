@@ -12,19 +12,19 @@ import (
 	"golang.org/x/image/colornames"
 )
 
-func BuildDiagramContent(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w port.ExecutionWindow, setup models.SetupItem, width, height float32, maxPoints int, t models.DiagramType, ref *port.DiagramUIRefs) draw.DiagramWidget {
+func BuildDiagramContent(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w port.ExecutionWindow, setup models.SetupItem, width, height float32, maxPoints int, t models.DiagramType, ref *port.DiagramUIRefs, d port.IDiagram) draw.DiagramWidget {
 	switch t {
 	case models.DiagramTypeBoolean:
 		boolFill := buildBooleanDiagram(holder, drawerFactory, setup, width, height)
 		ref.Chart = boolFill
 		return boolFill
 	case models.DiagramTypeBar:
-		barChart := buildBarchart(holder, drawerFactory, setup, width, height, maxPoints)
+		barChart := buildBarchart(holder, drawerFactory, setup, width, height, maxPoints, d)
 		ref.Chart = barChart
 
 		return barChart
 	case models.DiagramTypeLine:
-		lineChart := buildLinechart(holder, drawerFactory, setup, width, height, maxPoints)
+		lineChart := buildLinechart(holder, drawerFactory, setup, width, height, maxPoints, d)
 		ref.Chart = lineChart
 		return lineChart
 	}
@@ -39,7 +39,7 @@ func BuildDiagram(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w
 
 	ref := port.NewDiagramUIRefs(diagram.ID, holder.GetRenderer())
 
-	drawer := BuildDiagramContent(holder, drawerFactory, w, setup, width, height, maxPoints, diagram.Type, ref)
+	drawer := BuildDiagramContent(holder, drawerFactory, w, setup, width, height, maxPoints, diagram.Type, ref, diagram)
 
 	l := renderer.Layout()
 	legendObj := l.DiagramLegend(theItems, func(it *port.LegendItem) {
@@ -205,7 +205,7 @@ func CreateBoolDrawer(drawerFactory draw.Factory, setup *models.SetupItem, index
 	return w, nil
 }
 
-func CreateBarchartDrawer(drawerFactory draw.Factory, setup *models.SetupItem, index int, width, height float32, maxPoints int) (draw.DiagramWidget, error) {
+func CreateBarchartDrawer(drawerFactory draw.Factory, setup *models.SetupItem, index int, width, height float32, maxPoints int, d port.IDiagram) (draw.DiagramWidget, error) {
 	var axisColor, backgroundColor color.RGBA
 
 	if setup.DiagramStyle != nil {
@@ -251,11 +251,11 @@ func CreateBarchartDrawer(drawerFactory draw.Factory, setup *models.SetupItem, i
 		Axis:       axisColor,
 		Background: backgroundColor,
 		Variables:  theVariables,
-	}, setup.Title, setup.Description, width, height)
+	}, setup.Title, setup.Description, width, height, d)
 	return w, nil
 }
 
-func CreateLinechartDrawer(drawerFactory draw.Factory, setup *models.SetupItem, index int, width, height float32, maxPoints int) (draw.DiagramWidget, error) {
+func CreateLinechartDrawer(drawerFactory draw.Factory, setup *models.SetupItem, index int, width, height float32, maxPoints int, d port.IDiagram) (draw.DiagramWidget, error) {
 	opts := draw.DefaultLineChartOptions()
 
 	if setup.MultiVariableSetup != nil {
@@ -286,13 +286,14 @@ func CreateLinechartDrawer(drawerFactory draw.Factory, setup *models.SetupItem, 
 		setup.Description,
 		800, 260, // initial raster (so it doesn’t start tiny/blurry)
 		width, height, // widget hint; layout will expand it
+		d,
 	)
 
 	return w, nil
 }
 
-func buildLinechart(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, setup models.SetupItem, width, height float32, maxPoints int) draw.DiagramWidget {
-	linechart, err := CreateLinechartDrawer(drawerFactory, &setup, -1, width, height, maxPoints)
+func buildLinechart(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, setup models.SetupItem, width, height float32, maxPoints int, d port.IDiagram) draw.DiagramWidget {
+	linechart, err := CreateLinechartDrawer(drawerFactory, &setup, -1, width, height, maxPoints, d)
 	if err != nil {
 		return nil
 	}
@@ -301,8 +302,8 @@ func buildLinechart(holder draw.VariableDrawerOwner, drawerFactory draw.Factory,
 	return linechart
 }
 
-func buildBarchart(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, setup models.SetupItem, width, height float32, maxPoints int) draw.DiagramWidget {
-	barchart, err := CreateBarchartDrawer(drawerFactory, &setup, -1, width, height, maxPoints)
+func buildBarchart(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, setup models.SetupItem, width, height float32, maxPoints int, d port.IDiagram) draw.DiagramWidget {
+	barchart, err := CreateBarchartDrawer(drawerFactory, &setup, -1, width, height, maxPoints, d)
 	if err != nil {
 		return nil
 	}

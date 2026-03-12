@@ -369,7 +369,7 @@ func (b *Builder) buildBarDiagram(jobID string, d *models.Diagram, ref *port.Dia
 	for si := range d.Setup {
 		s := d.Setup[si]
 
-		w, err = window.CreateBarchartDrawer(b.Factory, &s, si, b.MinChartWidth, b.MinChartHeight, b.DefaultMaxPoints)
+		w, err = window.CreateBarchartDrawer(b.Factory, &s, si, b.MinChartWidth, b.MinChartHeight, b.DefaultMaxPoints, d)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -408,7 +408,7 @@ func (b *Builder) buildLineDiagram(jobID string, d *models.Diagram, ref *port.Di
 	for si := range d.Setup {
 		s := d.Setup[si]
 
-		w, err = window.CreateLinechartDrawer(b.Factory, &s, si, b.MinChartWidth, b.MinChartHeight, b.DefaultMaxPoints)
+		w, err = window.CreateLinechartDrawer(b.Factory, &s, si, b.MinChartWidth, b.MinChartHeight, b.DefaultMaxPoints, d)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -420,6 +420,7 @@ func (b *Builder) buildLineDiagram(jobID string, d *models.Diagram, ref *port.Di
 			Variable: s.Variable,
 			Sink:     w,
 		})
+		ref.RegisterMainChart(w)
 	}
 
 	legendObj := b.Layout.DiagramLegend(theItems, func(it *port.LegendItem) {

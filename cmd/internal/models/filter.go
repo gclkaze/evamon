@@ -21,6 +21,7 @@ type FilterSetup struct {
 type Filter struct {
 	Enabled bool         `json:"enabled"`
 	Setup   *FilterSetup `json:"setup,omitempty"`
+	//	Data    data.IMultiSeriesData `json:"-"`
 }
 
 func (f *Filter) HasEnabledComponents() bool {

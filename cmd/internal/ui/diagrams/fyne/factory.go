@@ -5,6 +5,7 @@ import (
 
 	"github.com/gclkaze/evamon/cmd/internal/ui/data"
 	"github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
+	dia "github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
 type Factory struct {
@@ -19,7 +20,7 @@ func NewFactory() *Factory {
 	}
 }
 
-func (f *Factory) NewBoolFill(opts port.BoolFillOptions, title string, description string, width, height float32, varname string) port.DiagramWidget {
+func (f *Factory) NewBoolFill(opts port.BoolFillOptions, title string, description string, width, height float32, varname string /*, owner *models.SetupItem*/) port.DiagramWidget {
 	trueC := opts.TrueColor
 	falseC := opts.FalseColor
 	if trueC == nil {
@@ -33,7 +34,7 @@ func (f *Factory) NewBoolFill(opts port.BoolFillOptions, title string, descripti
 	return NewBoolFillWidget(drawer, title, description, width, height) // tiny wrapper to satisfy DiagramWidget
 }
 
-func (f *Factory) NewBarChart(opts port.BarChartOptions, title string, description string, width, height float32) port.DiagramWidget {
+func (f *Factory) NewBarChart(opts port.BarChartOptions, title string, description string, width, height float32, owner dia.IDiagram) port.DiagramWidget {
 	seriesCount := len(opts.Variables)
 	if seriesCount <= 0 {
 		seriesCount = 1
@@ -42,13 +43,14 @@ func (f *Factory) NewBarChart(opts port.BarChartOptions, title string, descripti
 	src := data.NewMultiSeriesRing(
 		opts.MaxPoints, // history size
 		seriesCount,    // number of variables
+		owner,
 	)
 	drawer := NewBarChartDrawer(src, opts.Width, opts.Height, opts.Variables, opts.Background)
 	return NewBarChartWidget(drawer, title, description, width, height) // the resize-aware wrapper
 }
 
-func (f *Factory) NewLineChart(opts port.LineChartOptions, title string, description string, initialWidth, initialHeight, width, height float32) port.DiagramWidget {
-	src := data.NewMultiSeriesRing(opts.MaxPoints, len(opts.Variables)) // example impl
+func (f *Factory) NewLineChart(opts port.LineChartOptions, title string, description string, initialWidth, initialHeight, width, height float32, owner dia.IDiagram) port.DiagramWidget {
+	src := data.NewMultiSeriesRing(opts.MaxPoints, len(opts.Variables), owner) // example impl
 	drawer := NewLineChartDrawer(src, opts, initialWidth, initialHeight)
 	return NewLineChartWidget(drawer, title, description, width, height)
 }

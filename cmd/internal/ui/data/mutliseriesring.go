@@ -3,6 +3,8 @@ package data
 import (
 	"sync"
 	"time"
+
+	port "github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
 type MultiSeriesRing struct {
@@ -13,9 +15,11 @@ type MultiSeriesRing struct {
 
 	times  []time.Time
 	values [][]int
+
+	owner port.IDiagram
 }
 
-func NewMultiSeriesRing(maxPoints int, vars int) *MultiSeriesRing {
+func NewMultiSeriesRing(maxPoints int, vars int, owner port.IDiagram) *MultiSeriesRing {
 	if maxPoints <= 1 {
 		maxPoints = 50
 	}
@@ -28,6 +32,7 @@ func NewMultiSeriesRing(maxPoints int, vars int) *MultiSeriesRing {
 		vars:      vars,
 		times:     make([]time.Time, 0, maxPoints),
 		values:    make([][]int, vars),
+		owner:     owner,
 	}
 
 	for i := 0; i < vars; i++ {

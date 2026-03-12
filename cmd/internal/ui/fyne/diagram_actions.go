@@ -124,6 +124,13 @@ func (h DiagramActionHandler) saveFilters(jobID string, setupItem *models.SetupI
 	}
 
 	setupItem.Filter = filter
+	x, ok := h.ChartRegistry.Get(d.GetID())
+	if ok {
+		c, ok := x.GetMainChart()
+		if ok {
+			c.Refresh()
+		}
+	}
 
 	owner := d.GetDiagramOwner()
 	switch p := owner.(type) {
