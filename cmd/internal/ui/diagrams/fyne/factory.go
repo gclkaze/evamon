@@ -19,23 +19,6 @@ func NewFactory() *Factory {
 	}
 }
 
-/*
-	func (f *Factory) NewBoolFill(opts port.BoolFillOptions) port.Drawer {
-		trueC := opts.TrueColor
-		falseC := opts.FalseColor
-		if trueC == nil {
-			trueC = f.defaultTrue
-		}
-		if falseC == nil {
-			falseC = f.defaultFalse
-		}
-		return NewBoolFillDrawer(trueC, falseC)
-	}
-
-	func (f *Factory) NewBarChart(opts port.BarChartOptions) port.Drawer {
-		return NewBarChartDrawer(opts.MaxPoints, opts.Width, opts.Height, opts.Axis, opts.Background)
-	}
-*/
 func (f *Factory) NewBoolFill(opts port.BoolFillOptions, title string, description string, width, height float32, varname string) port.DiagramWidget {
 	trueC := opts.TrueColor
 	falseC := opts.FalseColor

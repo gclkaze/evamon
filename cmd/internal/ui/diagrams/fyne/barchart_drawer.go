@@ -23,12 +23,7 @@ type BarChartDrawer struct {
 
 	root *fyne.Container
 
-	//values []int
-
-	data data.IMultiSeriesData
-
-	//barColor color.Color
-	//barColor []color.Color
+	data      data.IMultiSeriesData
 	variables []port.VariableStyle
 
 	bgColor color.Color
