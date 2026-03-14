@@ -6,6 +6,9 @@ import (
 	"strings"
 
 	"github.com/gclkaze/evamon/cmd/internal/models"
+	"github.com/gclkaze/evamon/cmd/internal/ui/data"
+	diaw "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
+
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 	dia "github.com/gclkaze/evamon/cmd/internal/ui/port"
 	vp "github.com/gclkaze/evamon/cmd/internal/viewproject"
@@ -118,20 +121,71 @@ func (h DiagramActionHandler) validateExpression(expr string, d port.IDiagram) e
 	return nil
 }
 
+/*
+	func (h DiagramActionHandler) saveFilters(jobID string, setupItem *models.SetupItem, filter *models.Filter, d port.IDiagram) error {
+		if setupItem == nil {
+			return fmt.Errorf("setup item is nil")
+		}
+
+		setupItem.Filter = filter
+		x, ok := h.ChartRegistry.Get(d.GetID())
+		if ok {
+			c, ok := x.GetMainChart()
+			if ok {
+				c.Refresh()
+			}
+		}
+
+		owner := d.GetDiagramOwner()
+		switch p := owner.(type) {
+		case *vp.ViewProject:
+			return p.Save()
+		case *vp.DashboardProject:
+			return p.Save()
+		default:
+			return fmt.Errorf("unsupported diagram owner")
+		}
+
+		return nil
+	}
+*/
 func (h DiagramActionHandler) saveFilters(jobID string, setupItem *models.SetupItem, filter *models.Filter, d port.IDiagram) error {
 	if setupItem == nil {
 		return fmt.Errorf("setup item is nil")
 	}
 
+	// 1. diff before overwriting
+	var oldComponents []models.FilterComponent
+	if setupItem.Filter != nil && setupItem.Filter.Setup != nil {
+		oldComponents = setupItem.Filter.Setup.Components
+	}
+	var newComponents []models.FilterComponent
+	if filter != nil && filter.Setup != nil {
+		newComponents = filter.Setup.Components
+	}
+
+	changes := data.DiffFilterComponents(oldComponents, newComponents)
+
+	// 2. overwrite
 	setupItem.Filter = filter
-	x, ok := h.ChartRegistry.Get(d.GetID())
-	if ok {
-		c, ok := x.GetMainChart()
-		if ok {
+
+	// 3. apply changes to ring + refresh chart
+	if x, ok := h.ChartRegistry.Get(d.GetID()); ok {
+		if chart, ok := x.GetMainChart(); ok {
+
+			theWidget, ok := chart.(diaw.DiagramWidget)
+			if ok {
+				theWidget.GetDataSeries().ApplyFilterChanges(changes)
+			}
+
+		}
+
+		if c, ok := x.GetMainChart(); ok {
 			c.Refresh()
 		}
 	}
 
+	// 4. persist
 	owner := d.GetDiagramOwner()
 	switch p := owner.(type) {
 	case *vp.ViewProject:
@@ -141,6 +195,4 @@ func (h DiagramActionHandler) saveFilters(jobID string, setupItem *models.SetupI
 	default:
 		return fmt.Errorf("unsupported diagram owner")
 	}
-
-	return nil
 }

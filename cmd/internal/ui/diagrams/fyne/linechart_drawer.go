@@ -407,6 +407,9 @@ func (d *LineChartDrawer) sampleTimeLabelWidthLocked() float32 {
 	}
 	return d.xLabelSampleW
 }
+func (d *LineChartDrawer) GetDataSeries() data.IMultiSeriesData {
+	return d.data
+}
 
 /* ---------------------------
    Rendering (called from raster generator)

@@ -1,7 +1,6 @@
 package data
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -104,18 +103,17 @@ func (m *MultiSeriesRing) Append(at time.Time, nums []int) {
 		if setup != nil && len(setup.Components) > 0 {
 			// grow ConditionResults in sync with times
 			setup.ConditionResults = append(setup.ConditionResults, models.ConditionResult{
-				Results: make([]bool, len(setup.Components)),
+				Results: make(map[string]bool),
 			})
 
 			for i := range setup.Components {
-				if !setup.Components[i].Enabled {
+				c := setup.Components[i]
+				if !c.Enabled {
 					continue
 				}
-				res, err := utils.RunExpression(setup.Components[i].Expression, m.varnames, floats)
+				res, err := utils.RunExpression(c.Expression, m.varnames, floats)
 				if err == nil {
-					setup.ConditionResults[last].Results[i] = res
-				} else {
-					fmt.Print(err.Error())
+					setup.ConditionResults[last].Results[c.ID] = res
 				}
 			}
 		}
@@ -143,6 +141,68 @@ func (m *MultiSeriesRing) trimLocked() {
 		if setup != nil && len(setup.ConditionResults) > start {
 			setup.ConditionResults = setup.ConditionResults[start:]
 		}
+	}
+}
+
+func (m *MultiSeriesRing) ApplyFilterChanges(changes []FilterComponentChange) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	theFilter := m.owner.GetFilter()
+	if theFilter == nil || theFilter.Setup == nil {
+		return
+	}
+	setup := theFilter.Setup
+
+	for _, change := range changes {
+		switch change.Type {
+		case FilterComponentAdded:
+			// nothing to do — will start accumulating from next Append
+			m.backfillConditionResults(setup)
+		case FilterComponentRemoved:
+			m.removeFilterResults(setup, change.Component.ID)
+
+		case FilterComponentUpdated:
+			m.recalculateFilterResults(setup, change.Component)
+		}
+	}
+}
+
+func (m *MultiSeriesRing) backfillConditionResults(setup *models.FilterSetup) {
+	current := len(setup.ConditionResults)
+	needed := len(m.times)
+
+	for i := current; i < needed; i++ {
+		setup.ConditionResults = append(setup.ConditionResults, models.ConditionResult{
+			Results: make(map[string]bool),
+		})
+	}
+}
+
+func (m *MultiSeriesRing) removeFilterResults(setup *models.FilterSetup, id string) {
+	for i := range setup.ConditionResults {
+		delete(setup.ConditionResults[i].Results, id)
+	}
+}
+
+func (m *MultiSeriesRing) recalculateFilterResults(setup *models.FilterSetup, c models.FilterComponent) {
+	for i := range m.times {
+		if i >= len(setup.ConditionResults) {
+			break
+		}
+
+		floats := make([]float64, m.vars)
+		for v := 0; v < m.vars; v++ {
+			floats[v] = float64(m.values[v][i])
+		}
+
+		res, err := utils.RunExpression(c.Expression, m.varnames, floats)
+		if err != nil {
+			delete(setup.ConditionResults[i].Results, c.ID)
+			continue
+		}
+
+		setup.ConditionResults[i].Results[c.ID] = res
 	}
 }
 
@@ -201,7 +261,7 @@ func (m *MultiSeriesRing) readWindowWithFilter(start, end int) ([]time.Time, [][
 			if !c.Enabled {
 				continue
 			}
-			res := conditionResults[i].Results[j]
+			res := conditionResults[i].Results[c.ID]
 			if mode == models.FilterModeAND {
 				if !res {
 					overallShown = false

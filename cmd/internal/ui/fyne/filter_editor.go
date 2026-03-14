@@ -228,11 +228,7 @@ func (fe *FilterEditor) onAdd() {
 		return
 	}
 
-	fe.components = append(fe.components, models.FilterComponent{
-		ID:         "",
-		Expression: expr,
-		Enabled:    true,
-	})
+	fe.components = append(fe.components, models.NewFilterComponent(expr))
 
 	fe.clearInput()
 	fe.hideError()
@@ -317,8 +313,32 @@ func (fe *FilterEditor) rebuildRows() {
 	fe.rowsBox.Refresh()
 }
 
+/*
+	func (fe *FilterEditor) buildExpressionRow(idx int, c models.FilterComponent) fyne.CanvasObject {
+		check := widget.NewCheck("enabled", func(v bool) {
+			if idx < 0 || idx >= len(fe.components) {
+				return
+			}
+			fe.components[idx].Enabled = v
+		})
+		check.SetChecked(c.Enabled)
+
+		label := widget.NewLabel(c.Expression)
+
+		removeBtn := widget.NewButton("-", func() {
+			fe.removeAt(idx)
+		})
+
+		return container.NewHBox(
+			check,
+			label,
+			fynelayout.NewSpacer(),
+			removeBtn,
+		)
+	}
+*/
 func (fe *FilterEditor) buildExpressionRow(idx int, c models.FilterComponent) fyne.CanvasObject {
-	check := widget.NewCheck("enabled", func(v bool) {
+	check := widget.NewCheck("", func(v bool) {
 		if idx < 0 || idx >= len(fe.components) {
 			return
 		}
@@ -326,7 +346,8 @@ func (fe *FilterEditor) buildExpressionRow(idx int, c models.FilterComponent) fy
 	})
 	check.SetChecked(c.Enabled)
 
-	label := widget.NewLabel(c.Expression)
+	// use label if set, otherwise fall back to expression
+	label := widget.NewLabel(models.GetFilterLabel(c.Label, c.Expression))
 
 	removeBtn := widget.NewButton("-", func() {
 		fe.removeAt(idx)
@@ -339,7 +360,6 @@ func (fe *FilterEditor) buildExpressionRow(idx int, c models.FilterComponent) fy
 		removeBtn,
 	)
 }
-
 func (fe *FilterEditor) cloneComponents() []models.FilterComponent {
 	if len(fe.components) == 0 {
 		return nil

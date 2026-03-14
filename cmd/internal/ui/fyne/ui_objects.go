@@ -3,6 +3,7 @@ package fynerenderer
 import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"github.com/gclkaze/evamon/cmd/internal/ui/data"
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
@@ -17,7 +18,9 @@ func (x fyneObj) Title() string { return x.title }
 func (x fyneObj) ToggleItem(it *port.LegendItem) {
 	//x.ToggleItem(it)
 }
-
+func (x fyneObj) GetDataSeries() data.IMultiSeriesData {
+	return nil
+}
 func (x fyneObj) Refresh() {
 	x.o.Refresh()
 }

@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/widget"
+	"github.com/gclkaze/evamon/cmd/internal/ui/data"
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
@@ -35,7 +36,11 @@ func (w *BarChartWidget) ToggleItem(it *port.LegendItem) {
 }
 
 func (w *BarChartWidget) Refresh() {
-//	w.drawer.Refresh()
+	//	w.drawer.Refresh()
+}
+
+func (w *BarChartWidget) GetDataSeries() data.IMultiSeriesData {
+	return w.drawer.GetDataSeries()
 }
 
 func (w *BarChartWidget) Native() any { return w }

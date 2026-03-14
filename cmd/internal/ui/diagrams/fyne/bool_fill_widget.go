@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/widget"
+	"github.com/gclkaze/evamon/cmd/internal/ui/data"
 	dport "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
@@ -48,6 +49,10 @@ type boolFillWidgetRenderer struct {
 
 func (w *BoolFillWidget) Refresh() {
 	//	w.drawer.Refresh()
+}
+
+func (w *BoolFillWidget) GetDataSeries() data.IMultiSeriesData {
+	return w.drawer.GetDataSeries()
 }
 
 func (w *BoolFillWidget) Push(at time.Time, val any) {

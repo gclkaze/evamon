@@ -1,5 +1,11 @@
 package models
 
+import (
+	"strings"
+
+	"github.com/gclkaze/evamon/pkg/utils"
+)
+
 type FilterMode string
 
 const (
@@ -9,12 +15,13 @@ const (
 
 type FilterComponent struct {
 	ID         string `json:"id,omitempty"`
+	Label      string `json:"label,omitempty"`
 	Expression string `json:"expression"`
 	Enabled    bool   `json:"enabled"`
 }
 
 type ConditionResult struct {
-	Results []bool `json:"-"`
+	Results map[string]bool `json:"-"`
 }
 
 type FilterSetup struct {
@@ -27,6 +34,22 @@ type FilterSetup struct {
 type Filter struct {
 	Enabled bool         `json:"enabled"`
 	Setup   *FilterSetup `json:"setup,omitempty"`
+}
+
+func NewFilterComponent(expression string) FilterComponent {
+	return FilterComponent{
+		ID:         utils.GetRandomString(),
+		Expression: expression,
+		Enabled:    true,
+		Label:      "",
+	}
+}
+
+func GetFilterLabel(label, expression string) string {
+	if strings.TrimSpace(label) == "" {
+		return expression
+	}
+	return label
 }
 
 func (f *Filter) HasEnabledComponents() bool {

@@ -42,6 +42,11 @@ type BarChartDrawer struct {
 func (d *BarChartDrawer) Redraw() {
 	d.redrawWithAxis()
 }
+
+func (d *BarChartDrawer) GetDataSeries() data.IMultiSeriesData {
+	return d.data
+}
+
 func NewBarChartDrawer(src data.IMultiSeriesData, width, height float32, variables []port.VariableStyle, bgColor color.Color) *BarChartDrawer {
 	if width <= 0 {
 		width = 600

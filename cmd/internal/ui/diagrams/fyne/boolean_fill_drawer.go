@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"github.com/gclkaze/evamon/cmd/internal/ui/data"
 	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
@@ -20,6 +21,9 @@ type BoolFillDrawer struct {
 	varname string
 }
 
+func (d *BoolFillDrawer) GetDataSeries() data.IMultiSeriesData {
+	return nil
+}
 func NewBoolFillDrawer(trueColor, falseColor color.Color, varname string) *BoolFillDrawer {
 	r := canvas.NewRectangle(falseColor)
 

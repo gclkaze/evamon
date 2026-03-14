@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
+	"github.com/gclkaze/evamon/cmd/internal/ui/data"
 	dport "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
@@ -33,6 +34,10 @@ type LineChartWidget struct {
 	minHeight float32
 
 	chart *fyne.Container
+}
+
+func (w *LineChartWidget) GetDataSeries() data.IMultiSeriesData {
+	return w.drawer.GetDataSeries()
 }
 
 func NewLineChartWidget(drawer *LineChartDrawer, title, description string, width, height float32) *LineChartWidget {

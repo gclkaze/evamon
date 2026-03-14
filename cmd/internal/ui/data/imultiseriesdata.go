@@ -12,4 +12,6 @@ type IMultiSeriesData interface {
 
 	// append one timestamp + N values (N == Vars())
 	Append(at time.Time, nums []int)
+
+	ApplyFilterChanges(changes []FilterComponentChange)
 }
