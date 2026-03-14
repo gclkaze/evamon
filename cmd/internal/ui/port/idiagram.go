@@ -9,5 +9,6 @@ type IDiagram interface {
 	CollectVariables() []string
 	GetDiagramOwner() models.DiagramOwner
 	GetSetup() []models.SetupItem
+	GetFilter() *models.Filter
 	GetType() models.DiagramType
 }

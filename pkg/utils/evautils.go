@@ -24,6 +24,28 @@ func AnalyzeExpression(expr string) bool {
 	return res
 }
 
+func RunExpression(expr string, varnames []string, values []float64) (bool, error) {
+	if len(varnames) != len(values) {
+		return false, fmt.Errorf("the amount of variables need to be equal to the amount of values %d VS %d", len(varnames), len(values))
+	}
+	conditionParser := &tafexpr.TAFArgumentParser{}
+	conditionParser.VariableContext = SetupTruthyVariableContext()
+
+	for i := range varnames {
+		if strings.HasPrefix("$", varnames[i]) {
+			conditionParser.VariableContext.(*vc.TruthyVariablecontext).SetValue(varnames[i], values[i])
+		} else {
+
+			conditionParser.VariableContext.(*vc.TruthyVariablecontext).SetValue("$"+varnames[i], values[i])
+		}
+	}
+	res := conditionParser.Parse(expr)
+	if !res {
+		return false, parserErrorsToError(conditionParser)
+	}
+	return conditionParser.BoolValue, nil
+}
+
 func AnalyzeExpressionWithRespectToTheDeclaredVariables(variables []string, expr string) error {
 	conditionParser := &tafexpr.TAFArgumentParser{}
 	conditionParser.VariableContext = SetupTruthyVariableContext()

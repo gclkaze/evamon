@@ -28,6 +28,15 @@ func (d Diagram) GetName() string {
 	return d.Setup[0].Title
 }
 
+func (d Diagram) GetFilter() *Filter {
+	setups := d.GetSetup()
+	if len(setups) == 0 {
+		return nil
+	}
+
+	return setups[0].GetFilter()
+}
+
 func (d Diagram) GetID() string {
 	return d.ID
 }

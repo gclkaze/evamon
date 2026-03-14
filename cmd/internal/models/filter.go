@@ -13,15 +13,20 @@ type FilterComponent struct {
 	Enabled    bool   `json:"enabled"`
 }
 
+type ConditionResult struct {
+	Results []bool `json:"-"`
+}
+
 type FilterSetup struct {
 	Mode       FilterMode        `json:"mode"`
 	Components []FilterComponent `json:"components"`
+	//one for each time point
+	ConditionResults []ConditionResult `json:"-"`
 }
 
 type Filter struct {
 	Enabled bool         `json:"enabled"`
 	Setup   *FilterSetup `json:"setup,omitempty"`
-	//	Data    data.IMultiSeriesData `json:"-"`
 }
 
 func (f *Filter) HasEnabledComponents() bool {

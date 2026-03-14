@@ -44,13 +44,23 @@ func (f *Factory) NewBarChart(opts port.BarChartOptions, title string, descripti
 		opts.MaxPoints, // history size
 		seriesCount,    // number of variables
 		owner,
+		collectVariableNames(opts.Variables),
 	)
 	drawer := NewBarChartDrawer(src, opts.Width, opts.Height, opts.Variables, opts.Background)
 	return NewBarChartWidget(drawer, title, description, width, height) // the resize-aware wrapper
 }
 
 func (f *Factory) NewLineChart(opts port.LineChartOptions, title string, description string, initialWidth, initialHeight, width, height float32, owner dia.IDiagram) port.DiagramWidget {
-	src := data.NewMultiSeriesRing(opts.MaxPoints, len(opts.Variables), owner) // example impl
+	src := data.NewMultiSeriesRing(opts.MaxPoints, len(opts.Variables), owner, collectVariableNames(opts.Variables)) // example impl
 	drawer := NewLineChartDrawer(src, opts, initialWidth, initialHeight)
 	return NewLineChartWidget(drawer, title, description, width, height)
+}
+
+func collectVariableNames(vs []port.VariableStyle) []string {
+	var vars []string
+	for i := range vs {
+		vars = append(vars, vs[i].VariableName)
+	}
+
+	return vars
 }

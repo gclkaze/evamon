@@ -35,3 +35,7 @@ func (s SetupItem) GetFilterMode() FilterMode {
 	}
 	return s.Filter.Setup.Mode
 }
+
+func (s SetupItem) GetFilter() *Filter {
+	return s.Filter
+}
