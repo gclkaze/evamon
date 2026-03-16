@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/gclkaze/evamon/pkg/utils"
@@ -64,11 +65,24 @@ func (f *FilterComponent) Copy() *FilterComponent {
 	}
 }
 
-func GetFilterLabel(label, expression string) string {
+/*func GetFilterLabel(label, expression string) string {
 	if strings.TrimSpace(label) == "" {
 		return expression
 	}
 	return label
+}*/
+
+const maxFilterLabelLength = 20
+
+func GetFilterLabel(label, expression string, index int) string {
+	l := strings.TrimSpace(label)
+	if l == "" {
+		return fmt.Sprintf("Filter#%d", index+1)
+	}
+	if len(l) > maxFilterLabelLength {
+		return l[:maxFilterLabelLength] + "…"
+	}
+	return l
 }
 
 func (f *Filter) HasEnabledComponents() bool {

@@ -9,9 +9,11 @@ type DiagramUIRefs struct {
 	Generic []UIObject
 	parts   map[string]UIObject
 
-	rebuildToolbar func() []UIObject
-
-	renderer Renderer
+	rebuildToolbar   func() []UIObject
+	rebuildFilterRow func() UIObject
+	rebuildAll       func() []UIObject
+	rebuildWrapper   func()
+	renderer         Renderer
 }
 
 const (
@@ -22,6 +24,8 @@ const (
 	partDownloadButton        = "download_button"
 	partFilterEnabledCheckbox = "filter_enabled_checkbox"
 	partFilterButton          = "filter_button"
+	partFilterRow             = "filterRow"
+	partWrapper               = "wrapper"
 )
 
 func NewDiagramUIRefs(id string, renderer Renderer) *DiagramUIRefs {
@@ -38,6 +42,17 @@ func (r *DiagramUIRefs) AddGeneric(obj UIObject) {
 		return
 	}
 	r.Generic = append(r.Generic, obj)
+}
+
+func (r *DiagramUIRefs) SetRebuildWrapper(fn func()) {
+	r.rebuildWrapper = fn
+}
+
+func (r *DiagramUIRefs) RebuildWrapper() {
+	if r.rebuildWrapper == nil {
+		return
+	}
+	r.rebuildWrapper()
 }
 
 // internal helpers
@@ -68,6 +83,40 @@ func (r *DiagramUIRefs) RebuildToolbar() {
 	r.renderer.Layout().ReplaceHBoxContent(toolbar, newChildren...)
 }
 
+func (r *DiagramUIRefs) SetRebuildFilterRow(fn func() UIObject) {
+	r.rebuildFilterRow = fn
+}
+
+func (r *DiagramUIRefs) RebuildFilterRow() {
+	if r.rebuildFilterRow == nil {
+		return
+	}
+	if filterRow, ok := r.GetFilterRow(); ok {
+		r.renderer.Layout().ReplaceHBoxContent(filterRow, r.rebuildFilterRow())
+	}
+}
+
+func (r *DiagramUIRefs) SetRebuildAll(fn func() []UIObject) {
+	r.rebuildAll = fn
+}
+
+func (r *DiagramUIRefs) RebuildAll() {
+	if r.rebuildAll == nil {
+		return
+	}
+	if vbox, ok := r.GetWrapper(); ok {
+		r.renderer.Layout().ReplaceHBoxContent(vbox, r.rebuildAll()...)
+	}
+}
+
+func (r *DiagramUIRefs) RegisterWrapper(obj UIObject) {
+	r.set(partWrapper, obj)
+}
+
+func (r *DiagramUIRefs) GetWrapper() (UIObject, bool) {
+	return r.get(partWrapper)
+}
+
 // MainChart
 func (r *DiagramUIRefs) RegisterMainChart(obj UIObject) { r.set(partMainChart, obj) }
 func (r *DiagramUIRefs) GetMainChart() (UIObject, bool) { return r.get(partMainChart) }
@@ -92,6 +141,10 @@ func (r *DiagramUIRefs) ReplaceMaximizeButton(obj UIObject)  { r.set(partMaximiz
 func (r *DiagramUIRefs) RegisterDownloadButton(obj UIObject) { r.set(partDownloadButton, obj) }
 func (r *DiagramUIRefs) GetDownloadButton() (UIObject, bool) { return r.get(partDownloadButton) }
 func (r *DiagramUIRefs) ReplaceDownloadButton(obj UIObject)  { r.set(partDownloadButton, obj) }
+
+// Filter row
+func (r *DiagramUIRefs) RegisterFilterRow(obj UIObject) { r.set(partFilterRow, obj) }
+func (r *DiagramUIRefs) GetFilterRow() (UIObject, bool) { return r.get(partFilterRow) }
 
 // FilterEnabledCheckbox
 func (r *DiagramUIRefs) RegisterFilterEnabledCheckbox(obj UIObject) {

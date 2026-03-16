@@ -110,9 +110,10 @@ func (h *DiagramActionHandler) Filters(jobID string, d port.IDiagram) {
 				return err
 			}
 
-			if refs, ok := h.ChartRegistry.Get(d.GetID()); ok {
-				refs.RebuildToolbar()
-			}
+			/*			if refs, ok := h.ChartRegistry.Get(d.GetID()); ok {
+						refs.RebuildToolbar()
+						refs.RebuildFilterRow()
+					}*/
 			win.Close()
 			return nil
 		},
@@ -152,6 +153,35 @@ func (h *DiagramActionHandler) applyFilterChanges(d port.IDiagram, changes *[]mo
 	}
 }
 
+func (h *DiagramActionHandler) SetFilterComponentEnabled(jobID string, d port.IDiagram, componentID string, enabled bool) {
+	setups := d.GetSetup()
+	if d == nil || len(setups) == 0 {
+		return
+	}
+
+	setupItem := &setups[0]
+	if setupItem.Filter == nil || setupItem.Filter.Setup == nil {
+		return
+	}
+
+	for i := range setupItem.Filter.Setup.Components {
+		if setupItem.Filter.Setup.Components[i].ID == componentID {
+			setupItem.Filter.Setup.Components[i].Enabled = enabled
+			break
+		}
+	}
+
+	h.RefreshDiagram(d)
+
+	owner := d.GetDiagramOwner()
+	switch p := owner.(type) {
+	case *vp.ViewProject:
+		p.Save()
+	case *vp.DashboardProject:
+		p.Save()
+	}
+}
+
 func (h *DiagramActionHandler) saveFilters(jobID string, setupItem *models.SetupItem, filter *models.Filter, d port.IDiagram) error {
 	if setupItem == nil {
 		return fmt.Errorf("setup item is nil")
@@ -171,6 +201,9 @@ func (h *DiagramActionHandler) saveFilters(jobID string, setupItem *models.Setup
 		setupItem.HandleFilterChange(changes, newMode)
 		//handle condition results
 		h.applyFilterChanges(d, &changes)
+		if refs, ok := h.ChartRegistry.Get(d.GetID()); ok {
+			refs.RebuildWrapper()
+		}
 	}
 
 	owner := d.GetDiagramOwner()

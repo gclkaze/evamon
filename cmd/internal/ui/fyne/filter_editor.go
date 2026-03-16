@@ -313,30 +313,6 @@ func (fe *FilterEditor) rebuildRows() {
 	fe.rowsBox.Refresh()
 }
 
-/*func (fe *FilterEditor) buildExpressionRow(idx int, c models.FilterComponent) fyne.CanvasObject {
-	check := widget.NewCheck("", func(v bool) {
-		if idx < 0 || idx >= len(fe.components) {
-			return
-		}
-		fe.components[idx].Enabled = v
-	})
-	check.SetChecked(c.Enabled)
-
-	// use label if set, otherwise fall back to expression
-	label := widget.NewLabel(models.GetFilterLabel(c.Label, c.Expression))
-
-	removeBtn := widget.NewButton("-", func() {
-		fe.removeAt(idx)
-	})
-
-	return container.NewHBox(
-		check,
-		label,
-		fynelayout.NewSpacer(),
-		removeBtn,
-	)
-}*/
-
 func (fe *FilterEditor) buildExpressionRow(idx int, c models.FilterComponent) fyne.CanvasObject {
 	check := widget.NewCheck("", func(v bool) {
 		if idx < 0 || idx >= len(fe.components) {

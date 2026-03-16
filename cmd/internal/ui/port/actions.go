@@ -6,4 +6,5 @@ type DiagramActions interface {
 	DownloadCSV(jobID string, d IDiagram)
 	Filters(jobID string, d IDiagram)
 	SetFilterEnabled(jobID string, d IDiagram, enabled bool)
+	SetFilterComponentEnabled(jobID string, d IDiagram, componentID string, enabled bool)
 }
