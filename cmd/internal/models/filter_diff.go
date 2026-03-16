@@ -11,6 +11,10 @@ const (
 type FilterComponentChange struct {
 	Type      FilterComponentChangeType
 	Component FilterComponent
+
+	ExpressionChanged bool
+	LabelChanged      bool
+	EnabledChanged    bool
 }
 
 func (ch *FilterComponentChange) CopyFilterComponent() *FilterComponent {
@@ -38,13 +42,20 @@ func DiffFilterComponents(old, new []FilterComponent) []FilterComponentChange {
 				Type:      FilterComponentAdded,
 				Component: c,
 			})
-		} else if oldC.Expression != c.Expression {
-			// only expression change triggers recalculation
-			// enabled/disabled change is intentionally ignored
-			changes = append(changes, FilterComponentChange{
-				Type:      FilterComponentUpdated,
-				Component: c,
-			})
+		} else {
+			exprChanged := oldC.Expression != c.Expression
+			labelChanged := oldC.Label != c.Label
+			enabledChanged := oldC.Enabled != c.Enabled
+
+			if exprChanged || labelChanged || enabledChanged {
+				changes = append(changes, FilterComponentChange{
+					Type:              FilterComponentUpdated,
+					Component:         c,
+					ExpressionChanged: exprChanged,
+					LabelChanged:      labelChanged,
+					EnabledChanged:    enabledChanged,
+				})
+			}
 		}
 	}
 

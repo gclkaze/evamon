@@ -72,7 +72,16 @@ func (s *SetupItem) HandleFilterChange(changes []FilterComponentChange, mod Filt
 				id := change.Component.ID
 				for i := range s.Filter.Setup.Components {
 					if s.Filter.Setup.Components[i].ID == id {
-						s.Filter.Setup.Components[i].CopyFrom(&change.Component)
+						if change.ExpressionChanged {
+							s.Filter.Setup.Components[i].Expression = change.Component.Expression
+						}
+						if change.LabelChanged {
+							s.Filter.Setup.Components[i].Label = change.Component.Label
+						}
+						if change.EnabledChanged {
+							s.Filter.Setup.Components[i].Enabled = change.Component.Enabled
+						}
+
 						break
 					}
 				}

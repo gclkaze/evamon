@@ -313,31 +313,7 @@ func (fe *FilterEditor) rebuildRows() {
 	fe.rowsBox.Refresh()
 }
 
-/*
-	func (fe *FilterEditor) buildExpressionRow(idx int, c models.FilterComponent) fyne.CanvasObject {
-		check := widget.NewCheck("enabled", func(v bool) {
-			if idx < 0 || idx >= len(fe.components) {
-				return
-			}
-			fe.components[idx].Enabled = v
-		})
-		check.SetChecked(c.Enabled)
-
-		label := widget.NewLabel(c.Expression)
-
-		removeBtn := widget.NewButton("-", func() {
-			fe.removeAt(idx)
-		})
-
-		return container.NewHBox(
-			check,
-			label,
-			fynelayout.NewSpacer(),
-			removeBtn,
-		)
-	}
-*/
-func (fe *FilterEditor) buildExpressionRow(idx int, c models.FilterComponent) fyne.CanvasObject {
+/*func (fe *FilterEditor) buildExpressionRow(idx int, c models.FilterComponent) fyne.CanvasObject {
 	check := widget.NewCheck("", func(v bool) {
 		if idx < 0 || idx >= len(fe.components) {
 			return
@@ -358,6 +334,58 @@ func (fe *FilterEditor) buildExpressionRow(idx int, c models.FilterComponent) fy
 		label,
 		fynelayout.NewSpacer(),
 		removeBtn,
+	)
+}*/
+
+func (fe *FilterEditor) buildExpressionRow(idx int, c models.FilterComponent) fyne.CanvasObject {
+	check := widget.NewCheck("", func(v bool) {
+		if idx < 0 || idx >= len(fe.components) {
+			return
+		}
+		fe.components[idx].Enabled = v
+	})
+	check.SetChecked(c.Enabled)
+
+	labelEntry := widget.NewEntry()
+	labelEntry.SetPlaceHolder("Label (optional)")
+	labelEntry.SetText(c.Label)
+	labelEntry.OnChanged = func(s string) {
+		if idx < 0 || idx >= len(fe.components) {
+			return
+		}
+		fe.components[idx].Label = s
+	}
+
+	exprEntry := widget.NewEntry()
+	exprEntry.SetText(c.Expression)
+	exprEntry.OnChanged = func(s string) {
+		if idx < 0 || idx >= len(fe.components) {
+			return
+		}
+		fe.components[idx].Expression = strings.TrimSpace(s)
+
+		if err := fe.validateExpression(strings.TrimSpace(s)); err != nil {
+			fe.showError(err.Error())
+		} else {
+			fe.hideError()
+		}
+	}
+
+	removeBtn := widget.NewButton("-", func() {
+		fe.removeAt(idx)
+	})
+
+	// label + expression stacked vertically, filling available width
+	fields := container.NewVBox(
+		labelEntry,
+		exprEntry,
+	)
+
+	return container.NewBorder(
+		nil, nil,
+		check,
+		removeBtn,
+		fields,
 	)
 }
 func (fe *FilterEditor) cloneComponents() []models.FilterComponent {

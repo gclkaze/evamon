@@ -165,7 +165,9 @@ func (m *MultiSeriesRing) ApplyFilterChanges(changes []models.FilterComponentCha
 			m.removeFilterResults(setup, change.Component.ID)
 
 		case models.FilterComponentUpdated:
-			m.recalculateFilterResults(setup, change.Component)
+			if change.ExpressionChanged {
+				m.recalculateFilterResults(setup, change.Component)
+			}
 		}
 	}
 }
@@ -228,7 +230,7 @@ func (m *MultiSeriesRing) ReadWindow(start, end int) ([]time.Time, [][]int) {
 	}
 
 	theFilter := m.owner.GetFilter()
-	if theFilter != nil && theFilter.Enabled {
+	if theFilter != nil && theFilter.Enabled && theFilter.HasEnabledComponents() {
 		return m.readWindowWithFilter(start, end)
 	}
 
