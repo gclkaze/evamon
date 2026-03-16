@@ -39,3 +39,40 @@ func (s SetupItem) GetFilterMode() FilterMode {
 func (s SetupItem) GetFilter() *Filter {
 	return s.Filter
 }
+
+func (s *SetupItem) HandleFilterChange(new []FilterComponent, changes []FilterComponentChange, newFilter *Filter) {
+	for i := range changes {
+		change := changes[i]
+		switch change.Type {
+		case FilterComponentRemoved:
+			{
+				id := change.Component.ID
+				for i := range s.Filter.Setup.Components {
+					if s.Filter.Setup.Components[i].ID == id {
+						s.Filter.Setup.Components = append(s.Filter.Setup.Components[:i], s.Filter.Setup.Components[i+1:]...)
+						break
+					}
+				}
+			}
+		case FilterComponentAdded:
+			{
+				newComponent := change.Component.Copy()
+				if s.Filter == nil {
+					s.Filter = NewFilter()
+				}
+				s.Filter.Setup.Components = append(s.Filter.Setup.Components, *newComponent)
+			}
+		case FilterComponentUpdated:
+			{
+				id := change.Component.ID
+				for i := range s.Filter.Setup.Components {
+					if s.Filter.Setup.Components[i].ID == id {
+						s.Filter.Setup.Components[i].CopyFrom(&change.Component)
+						break
+					}
+				}
+			}
+		default:
+		}
+	}
+}

@@ -239,7 +239,11 @@ func (d Diagram) ValidateFilter(path string, s *SetupItem) error {
 	}
 
 	seenIDs := make(map[string]struct{}, len(fs.Components))
-
+	for i := range fs.Components {
+		if strings.TrimSpace(fs.Components[i].ID) == "" {
+			fs.Components[i].ID = utils.GetRandomString()
+		}
+	}
 	for i, c := range fs.Components {
 		cp := fmt.Sprintf("%s.components[%d]", path+".setup", i)
 

@@ -54,7 +54,9 @@ func (m *MultiSeriesRing) initializeFilter() {
 		setup := theFilter.Setup
 		if setup != nil {
 			// just pre-allocate capacity, no pre-filling
-			setup.ConditionResults = make([]models.ConditionResult, 0, m.maxPoints)
+			//			setup.ConditionResults = make([]models.ConditionResult, 0, m.maxPoints)
+
+			setup.InitializeFilter(m.maxPoints)
 		}
 	}
 }
@@ -144,7 +146,7 @@ func (m *MultiSeriesRing) trimLocked() {
 	}
 }
 
-func (m *MultiSeriesRing) ApplyFilterChanges(changes []FilterComponentChange) {
+func (m *MultiSeriesRing) ApplyFilterChanges(changes []models.FilterComponentChange, currentMode models.FilterMode) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -153,16 +155,17 @@ func (m *MultiSeriesRing) ApplyFilterChanges(changes []FilterComponentChange) {
 		return
 	}
 	setup := theFilter.Setup
+	setup.Mode = currentMode
 
 	for _, change := range changes {
 		switch change.Type {
-		case FilterComponentAdded:
+		case models.FilterComponentAdded:
 			// nothing to do — will start accumulating from next Append
 			m.backfillConditionResults(setup)
-		case FilterComponentRemoved:
+		case models.FilterComponentRemoved:
 			m.removeFilterResults(setup, change.Component.ID)
 
-		case FilterComponentUpdated:
+		case models.FilterComponentUpdated:
 			m.recalculateFilterResults(setup, change.Component)
 		}
 	}

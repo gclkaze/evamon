@@ -1,6 +1,10 @@
 package data
 
-import "time"
+import (
+	"time"
+
+	"github.com/gclkaze/evamon/cmd/internal/models"
+)
 
 type IMultiSeriesData interface {
 	Vars() int
@@ -13,5 +17,5 @@ type IMultiSeriesData interface {
 	// append one timestamp + N values (N == Vars())
 	Append(at time.Time, nums []int)
 
-	ApplyFilterChanges(changes []FilterComponentChange)
+	ApplyFilterChanges(changes []models.FilterComponentChange, currentMode models.FilterMode)
 }

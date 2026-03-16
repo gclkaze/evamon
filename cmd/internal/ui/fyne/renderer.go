@@ -4,6 +4,7 @@ package fynerenderer
 import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"github.com/gclkaze/evamon/cmd/internal/models"
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
@@ -22,7 +23,7 @@ func New() *Renderer {
 		a:        app.New(),
 		l:        Layout{},
 		c:        Controls{},
-		actions:  DiagramActionHandler{ChartRegistry:cr},
+		actions:  &DiagramActionHandler{ChartRegistry: cr, snaphshotMode: models.FilterModeAND},
 		registry: cr,
 	}
 }

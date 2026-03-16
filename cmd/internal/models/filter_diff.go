@@ -1,6 +1,4 @@
-package data
-
-import "github.com/gclkaze/evamon/cmd/internal/models"
+package models
 
 type FilterComponentChangeType string
 
@@ -12,18 +10,22 @@ const (
 
 type FilterComponentChange struct {
 	Type      FilterComponentChangeType
-	Component models.FilterComponent
+	Component FilterComponent
 }
 
-func DiffFilterComponents(old, new []models.FilterComponent) []FilterComponentChange {
+func (ch *FilterComponentChange) CopyFilterComponent() *FilterComponent {
+	return ch.Component.Copy()
+}
+
+func DiffFilterComponents(old, new []FilterComponent) []FilterComponentChange {
 	var changes []FilterComponentChange
 
-	oldMap := make(map[string]models.FilterComponent)
+	oldMap := make(map[string]FilterComponent)
 	for _, c := range old {
 		oldMap[c.ID] = c
 	}
 
-	newMap := make(map[string]models.FilterComponent)
+	newMap := make(map[string]FilterComponent)
 	for _, c := range new {
 		newMap[c.ID] = c
 	}

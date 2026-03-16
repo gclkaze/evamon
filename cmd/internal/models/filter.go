@@ -45,6 +45,25 @@ func NewFilterComponent(expression string) FilterComponent {
 	}
 }
 
+func NewFilter() *Filter {
+	f := &Filter{Enabled: true, Setup: NewFilterSetup()}
+	return f
+}
+
+func NewFilterSetup() *FilterSetup {
+	f := &FilterSetup{Mode: FilterModeAND, Components: make([]FilterComponent, 0), ConditionResults: make([]ConditionResult, 0)}
+	return f
+}
+
+func (f *FilterComponent) Copy() *FilterComponent {
+	return &FilterComponent{
+		ID:         utils.GetRandomString(),
+		Expression: f.Expression,
+		Enabled:    f.Enabled,
+		Label:      f.Label,
+	}
+}
+
 func GetFilterLabel(label, expression string) string {
 	if strings.TrimSpace(label) == "" {
 		return expression
@@ -64,4 +83,13 @@ func (f *Filter) HasEnabledComponents() bool {
 	}
 
 	return false
+}
+func (s *FilterSetup) InitializeFilter(maxPoints int) {
+	s.ConditionResults = make([]ConditionResult, 0, maxPoints)
+}
+
+func (c *FilterComponent) CopyFrom(from *FilterComponent) {
+	c.Enabled = from.Enabled
+	c.Expression = from.Expression
+	c.Label = from.Label
 }

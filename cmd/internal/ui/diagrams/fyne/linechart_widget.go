@@ -67,7 +67,7 @@ func NewLineChartWidget(drawer *LineChartDrawer, title, description string, widt
 }
 
 func (w *LineChartWidget) Refresh() {
-	//	w.drawer.Refresh()
+	w.BaseWidget.Refresh()
 }
 
 func (w *LineChartWidget) CreateRenderer() fyne.WidgetRenderer {

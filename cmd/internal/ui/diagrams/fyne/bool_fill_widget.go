@@ -48,7 +48,7 @@ type boolFillWidgetRenderer struct {
 }
 
 func (w *BoolFillWidget) Refresh() {
-	//	w.drawer.Refresh()
+	w.BaseWidget.Refresh()
 }
 
 func (w *BoolFillWidget) GetDataSeries() data.IMultiSeriesData {

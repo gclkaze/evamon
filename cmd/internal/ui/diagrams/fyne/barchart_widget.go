@@ -36,7 +36,7 @@ func (w *BarChartWidget) ToggleItem(it *port.LegendItem) {
 }
 
 func (w *BarChartWidget) Refresh() {
-	//	w.drawer.Refresh()
+	w.BaseWidget.Refresh()
 }
 
 func (w *BarChartWidget) GetDataSeries() data.IMultiSeriesData {
