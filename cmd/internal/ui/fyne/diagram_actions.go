@@ -140,16 +140,14 @@ func (h *DiagramActionHandler) validateExpression(expr string, d port.IDiagram) 
 	return nil
 }
 
-func (h *DiagramActionHandler) applyFilterChanges(d port.IDiagram, changes *[]models.FilterComponentChange, currentMode models.FilterMode) {
+func (h *DiagramActionHandler) applyFilterChanges(d port.IDiagram, changes *[]models.FilterComponentChange) {
 	if x, ok := h.ChartRegistry.Get(d.GetID()); ok {
 		if chart, ok := x.GetMainChart(); ok {
 			theWidget, ok := chart.(diaw.DiagramWidget)
 			if ok {
-				theWidget.GetDataSeries().ApplyFilterChanges(*changes, currentMode)
+				theWidget.GetDataSeries().ApplyFilterChanges(*changes)
 			}
-		}
-		if c, ok := x.GetMainChart(); ok {
-			c.Refresh()
+			chart.Refresh()
 		}
 	}
 }
@@ -170,9 +168,9 @@ func (h *DiagramActionHandler) saveFilters(jobID string, setupItem *models.Setup
 
 	if len(changes) > 0 || newMode != h.snaphshotMode {
 		//handle expressions
-		setupItem.HandleFilterChange(newComponents, changes, filter)
+		setupItem.HandleFilterChange(changes, newMode)
 		//handle condition results
-		h.applyFilterChanges(d, &changes, newMode)
+		h.applyFilterChanges(d, &changes)
 	}
 
 	owner := d.GetDiagramOwner()

@@ -40,7 +40,10 @@ func (s SetupItem) GetFilter() *Filter {
 	return s.Filter
 }
 
-func (s *SetupItem) HandleFilterChange(new []FilterComponent, changes []FilterComponentChange, newFilter *Filter) {
+func (s *SetupItem) HandleFilterChange(changes []FilterComponentChange, mod FilterMode) {
+	if s.Filter != nil && s.Filter.Setup != nil {
+		s.Filter.Setup.Mode = mod
+	}
 	for i := range changes {
 		change := changes[i]
 		switch change.Type {
@@ -59,6 +62,8 @@ func (s *SetupItem) HandleFilterChange(new []FilterComponent, changes []FilterCo
 				newComponent := change.Component.Copy()
 				if s.Filter == nil {
 					s.Filter = NewFilter()
+				} else if s.Filter.Setup == nil {
+					s.Filter.Setup = NewFilterSetup() // defensive, edge case
 				}
 				s.Filter.Setup.Components = append(s.Filter.Setup.Components, *newComponent)
 			}

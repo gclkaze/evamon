@@ -146,7 +146,7 @@ func (m *MultiSeriesRing) trimLocked() {
 	}
 }
 
-func (m *MultiSeriesRing) ApplyFilterChanges(changes []models.FilterComponentChange, currentMode models.FilterMode) {
+func (m *MultiSeriesRing) ApplyFilterChanges(changes []models.FilterComponentChange) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -155,7 +155,6 @@ func (m *MultiSeriesRing) ApplyFilterChanges(changes []models.FilterComponentCha
 		return
 	}
 	setup := theFilter.Setup
-	setup.Mode = currentMode
 
 	for _, change := range changes {
 		switch change.Type {
