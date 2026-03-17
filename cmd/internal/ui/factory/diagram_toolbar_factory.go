@@ -29,38 +29,42 @@ func (f *DiagramToolbarFactory) buildChildren(jobID string, d port.IDiagram) []p
 	var children []port.UIObject
 	children = append(children, f.renderer.Layout().Title(title), f.renderer.Layout().Spacer())
 
-	if setupItem != nil && setupItem.HasFilter() {
-		filterToggle := f.renderer.Controls().Check("filters", setupItem.IsFilterEnabled(), func(v bool) {
-			f.renderer.Actions().SetFilterEnabled(jobID, d, v)
-		})
-		children = append(children, filterToggle)
-		if exists {
-			theRef.RegisterFilterEnabledCheckbox(filterToggle)
+	if d.GetType() != models.DiagramTypeBoolean {
+		if setupItem != nil && setupItem.HasFilter() {
+			filterToggle := f.renderer.Controls().Check("filters", setupItem.IsFilterEnabled(), func(v bool) {
+				f.renderer.Actions().SetFilterEnabled(jobID, d, v)
+			})
+			children = append(children, filterToggle)
+			if exists {
+				theRef.RegisterFilterEnabledCheckbox(filterToggle)
+			}
 		}
+
+		filtersBtn := f.renderer.Controls().IconButton(port.IconFilters, func() {
+			f.renderer.Actions().Filters(jobID, d)
+		})
+		if exists {
+			theRef.RegisterFilterButton(filtersBtn)
+		}
+
+		downloadBtn := f.renderer.Controls().IconMenu(port.IconDownload, []port.MenuItem{
+			{Label: "JSON", Action: func() { f.renderer.Actions().DownloadJSON(jobID, d) }},
+			{Label: "CSV", Action: func() { f.renderer.Actions().DownloadCSV(jobID, d) }},
+		})
+
+		if exists {
+			theRef.RegisterDownloadButton(downloadBtn)
+		}
+		maximizeBtn := f.renderer.Controls().IconButton(port.IconMaximize, func() {
+			f.renderer.Actions().Maximize(jobID, d)
+		})
+		if exists {
+			theRef.RegisterMaximizeButton(maximizeBtn)
+		}
+		children = append(children, filtersBtn, downloadBtn, maximizeBtn)
+
 	}
 
-	filtersBtn := f.renderer.Controls().IconButton(port.IconFilters, func() {
-		f.renderer.Actions().Filters(jobID, d)
-	})
-	if exists {
-		theRef.RegisterFilterButton(filtersBtn)
-	}
-
-	downloadBtn := f.renderer.Controls().IconMenu(port.IconDownload, []port.MenuItem{
-		{Label: "JSON", Action: func() { f.renderer.Actions().DownloadJSON(jobID, d) }},
-		{Label: "CSV", Action: func() { f.renderer.Actions().DownloadCSV(jobID, d) }},
-	})
-
-	if exists {
-		theRef.RegisterDownloadButton(filtersBtn)
-	}
-	maximizeBtn := f.renderer.Controls().IconButton(port.IconMaximize, func() {
-		f.renderer.Actions().Maximize(jobID, d)
-	})
-	if exists {
-		theRef.RegisterMaximizeButton(filtersBtn)
-	}
-	children = append(children, filtersBtn, downloadBtn, maximizeBtn)
 	return children
 }
 
@@ -71,26 +75,25 @@ func (f *DiagramToolbarFactory) Build(jobID string, d port.IDiagram) port.UIObje
 
 	children := f.buildChildren(jobID, d)
 	toolbar := f.renderer.Layout().HBox(children...)
-	filterRow := f.buildFilterRow(jobID, d)
+
+	if d.GetType() == models.DiagramTypeBoolean {
+		return toolbar
+	}
+
+	filterRow, filterRowInner := f.buildFilterRow(jobID, d)
 
 	if refs, ok := f.renderer.ChartRegistry().Get(d.GetID()); ok {
 		refs.RegisterToolbar(toolbar)
 		refs.SetRebuildToolbar(func() []port.UIObject {
 			return f.buildChildren(jobID, d)
 		})
+
 		/*		if filterRow != nil {
 				refs.RegisterFilterRow(filterRow)
 				refs.SetRebuildFilterRow(func() port.UIObject {
-					return f.buildFilterRowChildren(jobID, d)
+					return f.buildFilterRow(jobID, d)
 				})
 			}*/
-
-		if filterRow != nil {
-			refs.RegisterFilterRow(filterRow)
-			refs.SetRebuildFilterRow(func() port.UIObject {
-				return f.buildFilterRow(jobID, d)
-			})
-		}
 
 		refs.SetRebuildWrapper(func() {
 			// rebuild toolbar in place
@@ -100,7 +103,7 @@ func (f *DiagramToolbarFactory) Build(jobID string, d port.IDiagram) port.UIObje
 			// rebuild filter row in place
 			newFilterChildren := f.buildFilterRowChildren(jobID, d)
 			if filterRow != nil {
-				f.renderer.Layout().ReplaceHBoxContent(filterRow, newFilterChildren...)
+				f.renderer.Layout().ReplaceHBoxContent(filterRowInner, newFilterChildren...)
 			}
 		})
 	}
@@ -152,10 +155,12 @@ func (f *DiagramToolbarFactory) buildFilterRowChildren(jobID string, d port.IDia
 	return children
 }
 
-func (f *DiagramToolbarFactory) buildFilterRow(jobID string, d port.IDiagram) port.UIObject {
+func (f *DiagramToolbarFactory) buildFilterRow(jobID string, d port.IDiagram) (port.UIObject, port.UIObject) {
 	children := f.buildFilterRowChildren(jobID, d)
-	if len(children) == 0 {
+	/*	if len(children) == 0 {
 		return nil
-	}
-	return f.renderer.Layout().HBox(children...)
+	}*/
+	hbox := f.renderer.Layout().HBox(children...)
+	scroll := f.renderer.Layout().HScroll(hbox)
+	return scroll, hbox
 }

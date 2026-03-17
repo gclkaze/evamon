@@ -36,6 +36,7 @@ type Layout interface {
 	Separator() UIObject
 
 	VScroll(content UIObject) UIObject
+	HScroll(content UIObject) UIObject
 
 	// NEW primitives
 	HBox(children ...UIObject) UIObject

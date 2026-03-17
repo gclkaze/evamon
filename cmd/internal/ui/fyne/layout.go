@@ -81,6 +81,12 @@ func (Layout) ReplaceHBoxContent(hbox port.UIObject, children ...port.UIObject) 
 	c.Refresh()
 }
 
+func (Layout) HScroll(content port.UIObject) port.UIObject {
+	scroll := container.NewHScroll(unwrap(content))
+	scroll.SetMinSize(fyne.NewSize(0, 50)) // fixed height, free width
+	return wrap(scroll)
+}
+
 func (Layout) Tabs(items ...port.TabItem) port.UIObject {
 	tabs := container.NewAppTabs()
 	for _, it := range items {

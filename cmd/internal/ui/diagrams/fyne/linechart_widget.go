@@ -127,12 +127,6 @@ type LineChartWidgetRenderer struct {
 	objects []fyne.CanvasObject
 }
 
-func (r *LineChartWidgetRenderer) Layou2t(size fyne.Size) {
-	// Resize drawer to fill entire widget
-	r.widget.drawer.Resize(size.Width, size.Height)
-	r.widget.drawer.Object().Resize(size)
-}
-
 func (r *LineChartWidgetRenderer) Layout(size fyne.Size) {
 	// size the card/root
 	r.widget.root.Resize(size)
