@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/gclkaze/evamon/cmd/internal/models"
+	dport "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
@@ -61,7 +62,23 @@ func (f *DiagramToolbarFactory) buildChildren(jobID string, d port.IDiagram) []p
 		if exists {
 			theRef.RegisterMaximizeButton(maximizeBtn)
 		}
-		children = append(children, filtersBtn, downloadBtn, maximizeBtn)
+		var zoomInBtn, zoomOutBtn port.UIObject
+		if exists {
+			if zoomable, ok := theRef.Chart.(dport.DiagramWidget); ok {
+				zoomInBtn = f.renderer.Controls().IconButton(port.IconZoomIn, func() {
+					zoomable.ZoomIn()
+				})
+				zoomOutBtn = f.renderer.Controls().IconButton(port.IconZoomOut, func() {
+					zoomable.ZoomOut()
+				})
+			}
+		}
+
+		children = append(children, filtersBtn)
+		if zoomInBtn != nil {
+			children = append(children, zoomInBtn, zoomOutBtn)
+		}
+		children = append(children, downloadBtn, maximizeBtn)
 
 	}
 

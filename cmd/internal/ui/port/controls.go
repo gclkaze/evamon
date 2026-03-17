@@ -6,6 +6,8 @@ const (
 	IconMaximize ToolbarIcon = "maximize"
 	IconDownload ToolbarIcon = "download"
 	IconFilters  ToolbarIcon = "filters"
+	IconZoomIn   ToolbarIcon = "zoom_in"
+	IconZoomOut  ToolbarIcon = "zoom_out"
 )
 
 type MenuItem struct {

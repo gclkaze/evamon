@@ -37,6 +37,10 @@ type BarChartDrawer struct {
 	xLabelCacheOK  bool
 
 	shownIndices map[int]bool
+
+	// zoomWindow is the number of most-recent points to display.
+	// 0 means show all buffered points (no zoom applied).
+	zoomWindow int
 }
 
 func (d *BarChartDrawer) Redraw() {
@@ -217,6 +221,43 @@ func (d *BarChartDrawer) ToggleItem(it *uport.LegendItem) {
 	d.Redraw()
 }
 
+func (d *BarChartDrawer) ZoomIn() {
+	if d.data == nil {
+		return
+	}
+	current := d.data.Len()
+	if d.zoomWindow == 0 {
+		if current <= zoomMin {
+			return // not enough data to narrow the view
+		}
+		d.zoomWindow = current - zoomStep
+	} else {
+		if d.zoomWindow <= zoomMin {
+			return // already at minimum zoom
+		}
+		d.zoomWindow -= zoomStep
+	}
+	if d.zoomWindow < zoomMin {
+		d.zoomWindow = zoomMin
+	}
+	d.Redraw()
+}
+
+func (d *BarChartDrawer) ZoomOut() {
+	if d.zoomWindow == 0 {
+		return
+	}
+	total := 0
+	if d.data != nil {
+		total = d.data.MaxPoints()
+	}
+	d.zoomWindow += zoomStep
+	if d.zoomWindow >= total {
+		d.zoomWindow = 0
+	}
+	d.Redraw()
+}
+
 func (d *BarChartDrawer) drawRectsFromSnapshot(plotY1, plotH, plotX0, slotW float32, yMin, yMax float64, values [][]int, pointCount int) {
 	if d.vars == 0 {
 		return
@@ -330,7 +371,15 @@ func (d *BarChartDrawer) redrawWithAxis() {
 		d.root.Refresh()
 		return
 	}
-	times, values := d.data.ReadWindow(0, 0) // copies
+	start := 0
+	if d.zoomWindow > 0 {
+		n := d.data.Len()
+		start = n - d.zoomWindow
+		if start < 0 {
+			start = 0
+		}
+	}
+	times, values := d.data.ReadWindow(start, 0) // copies
 
 	// 4) Safe point count
 	n := d.pointCountSafeFromSnapshot(len(times), values)

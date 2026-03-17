@@ -9,13 +9,13 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/gclkaze/evamon/cmd/internal/ui/data"
 	dport "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
-	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
 type BoolFillWidget struct {
 	widget.BaseWidget
 	drawer      *BoolFillDrawer
+	lastFetch   *lastUpdatedLabel
 	title       string
 	description string
 
@@ -24,14 +24,14 @@ type BoolFillWidget struct {
 }
 
 func NewBoolFillWidget(drawer *BoolFillDrawer, title string, description string, width, height float32) *BoolFillWidget {
-	w := &BoolFillWidget{drawer: drawer, title: title, description: description, minWidth: width, minHeight: height}
+	w := &BoolFillWidget{drawer: drawer, lastFetch: newLastUpdatedLabel(), title: title, description: description, minWidth: width, minHeight: height}
 	w.ExtendBaseWidget(w)
 	return w
 }
 func (w *BoolFillWidget) Native() any         { return w }
 func (w *BoolFillWidget) Title() string       { return w.title }
 func (w *BoolFillWidget) Description() string { return w.description }
-func (x *BoolFillWidget) ToggleItem(it *port.LegendItem) {
+func (w *BoolFillWidget) ToggleItem(it *uport.LegendItem) {
 	//x.ToggleItem(it)
 	fmt.Printf("BoolFillWidget toggle item")
 	fmt.Print(it)
@@ -57,7 +57,13 @@ func (w *BoolFillWidget) GetDataSeries() data.IMultiSeriesData {
 
 func (w *BoolFillWidget) Push(at time.Time, val any) {
 	w.drawer.Push(at, val)
+	w.lastFetch.update(at)
 }
+
+func (w *BoolFillWidget) ZoomIn()  {}
+func (w *BoolFillWidget) ZoomOut() {}
+
+func (w *BoolFillWidget) LastUpdatedLabel() uport.UIObject { return w.lastFetch }
 
 func (r *boolFillWidgetRenderer) Layout(size fyne.Size) {
 	// Make sure the drawer root matches the allocated size

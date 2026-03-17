@@ -68,6 +68,10 @@ type LineChartDrawer struct {
 
 	// Series visibility
 	shownIndices map[int]bool
+
+	// zoomWindow is the number of most-recent points to display.
+	// 0 means show all buffered points (no zoom applied).
+	zoomWindow int
 }
 
 type plotRect struct {
@@ -411,12 +415,68 @@ func (d *LineChartDrawer) GetDataSeries() data.IMultiSeriesData {
 	return d.data
 }
 
+func (d *LineChartDrawer) ZoomIn() {
+	d.mu.Lock()
+	if d.data == nil {
+		d.mu.Unlock()
+		return
+	}
+	current := d.data.Len()
+	if d.zoomWindow == 0 {
+		if current <= zoomMin {
+			d.mu.Unlock()
+			return // not enough data to narrow the view
+		}
+		d.zoomWindow = current - zoomStep
+	} else {
+		if d.zoomWindow <= zoomMin {
+			d.mu.Unlock()
+			return // already at minimum zoom
+		}
+		d.zoomWindow -= zoomStep
+	}
+	if d.zoomWindow < zoomMin {
+		d.zoomWindow = zoomMin
+	}
+	d.mu.Unlock()
+	d.raster.Refresh()
+}
+
+func (d *LineChartDrawer) ZoomOut() {
+	d.mu.Lock()
+	if d.zoomWindow == 0 {
+		d.mu.Unlock()
+		return
+	}
+	total := 0
+	if d.data != nil {
+		total = d.data.MaxPoints()
+	}
+	d.zoomWindow += zoomStep
+	if d.zoomWindow >= total {
+		d.zoomWindow = 0
+	}
+	d.mu.Unlock()
+	d.raster.Refresh()
+}
+
 /* ---------------------------
    Rendering (called from raster generator)
 --------------------------- */
 
+func (d *LineChartDrawer) zoomedStartLocked() int {
+	if d.zoomWindow <= 0 || d.data == nil {
+		return 0
+	}
+	start := d.data.Len() - d.zoomWindow
+	if start < 0 {
+		return 0
+	}
+	return start
+}
+
 func (d *LineChartDrawer) drawLocked(w, h int) {
-	times, values := d.data.ReadWindow(0, 0) // copies
+	times, values := d.data.ReadWindow(d.zoomedStartLocked(), 0) // copies
 	f := d.computeFrameFromSnapshotLocked(w, h, times, values)
 
 	fillRGBA(d.img, d.opts.Background)

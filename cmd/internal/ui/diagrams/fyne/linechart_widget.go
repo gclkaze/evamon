@@ -23,9 +23,10 @@ type LineChartWidget struct {
 	title       string
 	description string
 
-	drawer *LineChartDrawer
-	root   *fyne.Container
-	card   *widget.Card
+	drawer    *LineChartDrawer
+	lastFetch *lastUpdatedLabel
+	root      *fyne.Container
+	card      *widget.Card
 
 	// track last size (optional)
 	size fyne.Size
@@ -53,6 +54,7 @@ func NewLineChartWidget(drawer *LineChartDrawer, title, description string, widt
 	}
 
 	w.drawer = drawer
+	w.lastFetch = newLastUpdatedLabel()
 
 	// Put chart in a max container so it expands nicely inside the card
 	chart := container.NewMax(w.drawer.Object())
@@ -82,6 +84,15 @@ func (w *LineChartWidget) CreateRenderer() fyne.WidgetRenderer {
 func (w *LineChartWidget) ToggleItem(it *port.LegendItem) {
 	w.drawer.ToggleItem(it)
 }
+
+func (w *LineChartWidget) ZoomIn() {
+	w.drawer.ZoomIn()
+}
+
+func (w *LineChartWidget) ZoomOut() {
+	w.drawer.ZoomOut()
+}
+
 func (w *LineChartWidget) Title() string       { return w.title }
 func (w *LineChartWidget) Description() string { return w.description }
 
@@ -91,10 +102,15 @@ func (w *LineChartWidget) Object() fyne.CanvasObject {
 	return w.root
 }
 
-// Push adds a point to the drawer.
+// Push adds a point to the drawer and updates the last-fetch label.
 // IMPORTANT: Call this on the UI thread (RunOnMain) if you’re pushing from goroutines.
 func (w *LineChartWidget) Push(at time.Time, val any) {
 	w.drawer.Push(at, val)
+	w.lastFetch.update(at)
+}
+
+func (w *LineChartWidget) LastUpdatedLabel() uport.UIObject {
+	return w.lastFetch
 }
 
 // Optional: allow external resizing (if you use WithoutLayout somewhere)

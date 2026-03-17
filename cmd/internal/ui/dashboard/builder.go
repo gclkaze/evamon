@@ -353,6 +353,10 @@ func (b *Builder) buildBooleanDiagram(jobID string, d *models.Diagram, ref *port
 		}
 	}
 
+	if dw, ok := ref.Chart.(dport.DiagramWidget); ok {
+		parts = append(parts, dw.LastUpdatedLabel())
+	}
+
 	return b.Layout.VBox(parts...), bindings, nil
 }
 
@@ -391,6 +395,7 @@ func (b *Builder) buildBarDiagram(jobID string, d *models.Diagram, ref *port.Dia
 	ref.Legend = legendObj
 	ref.RegisterLegend(legendObj)
 	parts = append([]uport.UIObject{legendObj}, parts...)
+	parts = append(parts, w.LastUpdatedLabel())
 
 	return b.Layout.VBox(parts...), bindings, nil
 }
@@ -432,6 +437,7 @@ func (b *Builder) buildLineDiagram(jobID string, d *models.Diagram, ref *port.Di
 	ref.Legend = legendObj
 	ref.RegisterLegend(legendObj)
 	parts = append([]uport.UIObject{legendObj}, parts...)
+	parts = append(parts, w.LastUpdatedLabel())
 
 	return b.Layout.VBox(parts...), bindings, nil
 }

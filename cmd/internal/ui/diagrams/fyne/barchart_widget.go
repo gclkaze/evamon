@@ -13,6 +13,7 @@ import (
 type BarChartWidget struct {
 	widget.BaseWidget
 	drawer      *BarChartDrawer
+	lastFetch   *lastUpdatedLabel
 	title       string
 	description string
 
@@ -21,18 +22,29 @@ type BarChartWidget struct {
 }
 
 func NewBarChartWidget(drawer *BarChartDrawer, title string, description string, width, height float32) *BarChartWidget {
-	w := &BarChartWidget{drawer: drawer, title: title, description: description, minWidth: width, minHeight: height}
+	w := &BarChartWidget{drawer: drawer, lastFetch: newLastUpdatedLabel(), title: title, description: description, minWidth: width, minHeight: height}
 	w.ExtendBaseWidget(w)
 	return w
 }
 
 func (w *BarChartWidget) Push(at time.Time, val any) {
 	w.drawer.Push(at, val)
+	w.lastFetch.update(at)
 }
+
+func (w *BarChartWidget) LastUpdatedLabel() port.UIObject { return w.lastFetch }
 func (w *BarChartWidget) Title() string       { return w.title }
 func (w *BarChartWidget) Description() string { return w.description }
 func (w *BarChartWidget) ToggleItem(it *port.LegendItem) {
 	w.drawer.ToggleItem(it)
+}
+
+func (w *BarChartWidget) ZoomIn() {
+	w.drawer.ZoomIn()
+}
+
+func (w *BarChartWidget) ZoomOut() {
+	w.drawer.ZoomOut()
 }
 
 func (w *BarChartWidget) Refresh() {
