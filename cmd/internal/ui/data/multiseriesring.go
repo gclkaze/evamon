@@ -110,9 +110,9 @@ func (m *MultiSeriesRing) Append(at time.Time, nums []int) {
 
 			for i := range setup.Components {
 				c := setup.Components[i]
-				if !c.Enabled {
-					continue
-				}
+				/*				if !c.Enabled {
+								continue
+							}*/
 				res, err := utils.RunExpression(c.Expression, m.varnames, floats)
 				if err == nil {
 					setup.ConditionResults[last].Results[c.ID] = res
@@ -159,8 +159,7 @@ func (m *MultiSeriesRing) ApplyFilterChanges(changes []models.FilterComponentCha
 	for _, change := range changes {
 		switch change.Type {
 		case models.FilterComponentAdded:
-			// nothing to do — will start accumulating from next Append
-			m.backfillConditionResults(setup)
+			m.backfillConditionResults(setup, change.Component)
 		case models.FilterComponentRemoved:
 			m.removeFilterResults(setup, change.Component.ID)
 
@@ -172,14 +171,31 @@ func (m *MultiSeriesRing) ApplyFilterChanges(changes []models.FilterComponentCha
 	}
 }
 
-func (m *MultiSeriesRing) backfillConditionResults(setup *models.FilterSetup) {
-	current := len(setup.ConditionResults)
+func (m *MultiSeriesRing) backfillConditionResults(setup *models.FilterSetup, c models.FilterComponent) {
 	needed := len(m.times)
 
-	for i := current; i < needed; i++ {
+	// Grow ConditionResults to cover all existing points.
+	for len(setup.ConditionResults) < needed {
 		setup.ConditionResults = append(setup.ConditionResults, models.ConditionResult{
 			Results: make(map[string]bool),
 		})
+	}
+
+	// Evaluate the new condition against every existing data point.
+	if !c.Enabled {
+		return
+	}
+	for i := 0; i < needed; i++ {
+		floats := make([]float64, m.vars)
+		for v := 0; v < m.vars; v++ {
+			floats[v] = float64(m.values[v][i])
+		}
+		res, err := utils.RunExpression(c.Expression, m.varnames, floats)
+		if err != nil {
+			delete(setup.ConditionResults[i].Results, c.ID)
+			continue
+		}
+		setup.ConditionResults[i].Results[c.ID] = res
 	}
 }
 

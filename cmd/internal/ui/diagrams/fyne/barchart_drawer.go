@@ -315,6 +315,14 @@ func (d *BarChartDrawer) drawRectsFromSnapshot(plotY1, plotH, plotX0, slotW floa
 			r.Move(fyne.NewPos(x, y))
 			r.Resize(fyne.NewSize(barW, bh))
 			d.root.Add(r)
+
+			lbl := canvas.NewText(formatCompact(val), color.NRGBA{R: 225, G: 225, B: 225, A: 255})
+			lbl.TextSize = d.xLabelTextSize
+			lbl.Alignment = fyne.TextAlignCenter
+			lbl.Refresh()
+			ls := lbl.MinSize()
+			lbl.Move(fyne.NewPos(x+barW/2-ls.Width/2, y-ls.Height-2))
+			d.root.Add(lbl)
 		}
 	}
 }
