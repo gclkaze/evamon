@@ -41,6 +41,22 @@ type BarChartDrawer struct {
 	// zoomWindow is the number of most-recent points to display.
 	// 0 means show all buffered points (no zoom applied).
 	zoomWindow int
+
+	// refreshHook, when set, is called instead of d.root.Refresh().
+	// Used in maximize mode so refreshes go through the maximize adapter
+	// (whose canvas is reliably tracked) rather than through CanvasForObject(d.root)
+	// which can be stale or nil when d.root lives inside a widget renderer.
+	refreshHook func()
+}
+
+// refreshRoot calls the refresh hook if one is installed (maximize mode),
+// otherwise falls back to d.root.Refresh() for normal operation.
+func (d *BarChartDrawer) refreshRoot() {
+	if d.refreshHook != nil {
+		d.refreshHook()
+	} else {
+		d.root.Refresh()
+	}
 }
 
 func (d *BarChartDrawer) Redraw() {
@@ -376,7 +392,7 @@ func (d *BarChartDrawer) redrawWithAxis() {
 
 	// 3) Data snapshot
 	if d.data == nil {
-		d.root.Refresh()
+		d.refreshRoot()
 		return
 	}
 	start := 0
@@ -392,7 +408,7 @@ func (d *BarChartDrawer) redrawWithAxis() {
 	// 4) Safe point count
 	n := d.pointCountSafeFromSnapshot(len(times), values)
 	if n <= 0 {
-		d.root.Refresh()
+		d.refreshRoot()
 		return
 	}
 
@@ -405,7 +421,7 @@ func (d *BarChartDrawer) redrawWithAxis() {
 	style := d.defaultChartStyle()
 	plot, ok := d.computePlotArea(w, h, style)
 	if !ok {
-		d.root.Refresh()
+		d.refreshRoot()
 		return
 	}
 
@@ -427,7 +443,7 @@ func (d *BarChartDrawer) redrawWithAxis() {
 	d.drawXLabelsFromTimes(plot, style, slotW, times)
 
 	// 10) Refresh
-	d.root.Refresh()
+	d.refreshRoot()
 }
 
 // --- helpers ---
@@ -747,6 +763,71 @@ func formatCompact(v float64) string {
 		}
 		return fmt.Sprintf("%.2f", v)
 	}
+}
+
+// Variables returns the per-series style information (name, color).
+func (d *BarChartDrawer) Variables() []port.VariableStyle { return d.variables }
+
+// ShownIndices returns a copy of the current series-visibility map.
+func (d *BarChartDrawer) ShownIndices() map[int]bool {
+	out := make(map[int]bool, len(d.shownIndices))
+	for k, v := range d.shownIndices {
+		out[k] = v
+	}
+	return out
+}
+
+// HitTestX maps a logical-unit X position to the nearest data point index.
+// widgetW is the full widget width in Fyne dp units.
+func (d *BarChartDrawer) HitTestX(pixX, widgetW float32) (idx int, times []time.Time, values [][]int, found bool) {
+	if d.data == nil {
+		return
+	}
+
+	style := d.defaultChartStyle()
+	plotX0 := style.marginLeft
+	plotW := widgetW - style.marginLeft - style.marginRight
+	if plotW <= 1 {
+		return
+	}
+
+	start := 0
+	if d.zoomWindow > 0 {
+		n := d.data.Len()
+		start = n - d.zoomWindow
+		if start < 0 {
+			start = 0
+		}
+	}
+	times, values = d.data.ReadWindow(start, 0)
+	n := d.pointCountSafeFromSnapshot(len(times), values)
+	if n == 0 {
+		return
+	}
+	if n < len(times) {
+		times = times[:n]
+	}
+
+	slotW := plotW / float32(n)
+	if slotW < 1 {
+		slotW = 1
+	}
+
+	// Clamp to plot area bounds.
+	if pixX < plotX0 {
+		pixX = plotX0
+	} else if pixX > plotX0+plotW {
+		pixX = plotX0 + plotW - 0.001
+	}
+
+	idx = int((pixX - plotX0) / slotW)
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= n {
+		idx = n - 1
+	}
+	return idx, times, values, true
 }
 
 func clamp01(x float32) float32 {

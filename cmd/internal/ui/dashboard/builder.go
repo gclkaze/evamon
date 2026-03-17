@@ -378,7 +378,9 @@ func (b *Builder) buildBarDiagram(jobID string, d *models.Diagram, ref *port.Dia
 			return nil, nil, err
 		}
 		ref.Chart = w
-		parts = append(parts, w)
+		slot := b.Layout.Max(w)
+		ref.ChartSlot = slot
+		parts = append(parts, slot)
 		bindings = append(bindings, BindingTarget{
 			JobID:    jobID,
 			Variable: s.Variable,
@@ -417,9 +419,10 @@ func (b *Builder) buildLineDiagram(jobID string, d *models.Diagram, ref *port.Di
 		if err != nil {
 			return nil, nil, err
 		}
-
-		parts = append(parts, w)
 		ref.Chart = w
+		slot := b.Layout.Max(w)
+		ref.ChartSlot = slot
+		parts = append(parts, slot)
 		bindings = append(bindings, BindingTarget{
 			JobID:    jobID,
 			Variable: s.Variable,

@@ -43,6 +43,21 @@ func (w *LineChartWidget) GetDataSeries() data.IMultiSeriesData {
 	return w.drawer.GetDataSeries()
 }
 
+// MaximizeView returns a widget suitable as a maximize window's content.
+// See BarChartWidget.MaximizeView for the full explanation.
+// Call ClearMaximizeHook() when the maximize window closes.
+func (w *LineChartWidget) MaximizeView(initialW, initialH float32) fyne.CanvasObject {
+	w.drawer.Resize(initialW, initialH)
+	adapter := newMaximizeAdapter(w.drawer.Object(), func(width, height float32) {
+		w.drawer.Resize(width, height)
+	})
+	w.drawer.refreshHook = func() { adapter.Refresh() }
+	return adapter
+}
+
+// ClearMaximizeHook removes the refresh hook set by MaximizeView.
+func (w *LineChartWidget) ClearMaximizeHook() { w.drawer.refreshHook = nil }
+
 func NewLineChartWidget(drawer *LineChartDrawer, title, description string, width, height float32) *LineChartWidget {
 	w := &LineChartWidget{
 		title:       strings.TrimSpace(title),

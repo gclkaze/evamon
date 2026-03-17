@@ -5,6 +5,9 @@ import (
 	"log"
 	"strings"
 
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/widget"
 	"github.com/gclkaze/evamon/cmd/internal/models"
 	diaw "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 
@@ -26,8 +29,67 @@ type DiagramActionHandler struct {
 	snaphshotMode      models.FilterMode
 }
 
+// maximizeViewProvider is implemented by BarChartWidget and LineChartWidget.
+//
+// MaximizeView(w, h) pre-sizes the drawer and installs a refreshHook so every
+// drawer refresh call goes through adapter.Refresh() → CanvasForObject(adapter)
+// (reliable — adapter IS window content) instead of CanvasForObject(d.root)
+// which can be stale/nil when d.root lives inside a widget renderer.
+//
+// ClearMaximizeHook() removes the hook when the maximize window closes so that
+// normal rendering (original canvas) resumes correctly.
+type maximizeViewProvider interface {
+	MaximizeView(initialW, initialH float32) fyne.CanvasObject
+	ClearMaximizeHook()
+}
+
 func (h *DiagramActionHandler) Maximize(jobID string, d port.IDiagram) {
-	log.Printf("maximize clicked for job=%s diagram=%s\n", jobID, d.GetName())
+	refs, ok := h.ChartRegistry.Get(d.GetID())
+	if !ok || refs.Maximized {
+		return // no refs, or window already open
+	}
+	if refs.Chart == nil || refs.ChartSlot == nil {
+		return
+	}
+
+	provider, ok := refs.Chart.(maximizeViewProvider)
+	if !ok {
+		return
+	}
+
+	chartObj := refs.Chart.Native().(fyne.CanvasObject)
+	slotContainer := refs.ChartSlot.Native().(*fyne.Container)
+
+	// Replace chart widget in the slot with a placeholder.
+	slotContainer.RemoveAll()
+	slotContainer.Add(container.NewCenter(
+		widget.NewLabelWithStyle(
+			"Maximized window is open",
+			fyne.TextAlignCenter,
+			fyne.TextStyle{Italic: true},
+		),
+	))
+
+	const maxW, maxH float32 = 1200, 800
+
+	// MaximizeView pre-sizes the drawer and installs the refresh hook.
+	view := provider.MaximizeView(maxW, maxH)
+
+	title := d.GetName()
+	win := fyne.CurrentApp().NewWindow(title)
+	win.Resize(fyne.NewSize(maxW, maxH))
+	win.SetContent(view)
+
+	refs.Maximized = true
+
+	win.SetOnClosed(func() {
+		provider.ClearMaximizeHook()
+		slotContainer.RemoveAll()
+		slotContainer.Add(chartObj)
+		refs.Maximized = false
+	})
+
+	win.Show()
 }
 
 func (h *DiagramActionHandler) DownloadJSON(jobID string, d port.IDiagram) {

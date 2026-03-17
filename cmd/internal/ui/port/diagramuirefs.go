@@ -1,13 +1,15 @@
 package port
 
 type DiagramUIRefs struct {
-	ID      string
-	Panel   UIObject
-	Toolbar UIObject
-	Legend  UIObject
-	Chart   UIObject
-	Generic []UIObject
-	parts   map[string]UIObject
+	ID        string
+	Panel     UIObject
+	Toolbar   UIObject
+	Legend    UIObject
+	Chart     UIObject
+	ChartSlot UIObject // Max-container that holds Chart in the normal panel; swapped on maximize
+	Maximized bool     // true while the maximize window is open
+	Generic   []UIObject
+	parts     map[string]UIObject
 
 	rebuildToolbar   func() []UIObject
 	rebuildFilterRow func() UIObject

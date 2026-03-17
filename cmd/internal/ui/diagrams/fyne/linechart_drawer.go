@@ -72,6 +72,21 @@ type LineChartDrawer struct {
 	// zoomWindow is the number of most-recent points to display.
 	// 0 means show all buffered points (no zoom applied).
 	zoomWindow int
+
+	// refreshHook, when set, is called instead of d.raster.Refresh().
+	// Used in maximize mode so refreshes go through the maximize adapter
+	// (whose canvas is reliably tracked) rather than CanvasForObject(d.raster).
+	refreshHook func()
+}
+
+// refreshRaster calls the refresh hook if one is installed (maximize mode),
+// otherwise falls back to d.raster.Refresh() for normal operation.
+func (d *LineChartDrawer) refreshRaster() {
+	if d.refreshHook != nil {
+		d.refreshHook()
+	} else {
+		d.raster.Refresh()
+	}
 }
 
 type plotRect struct {
@@ -282,7 +297,7 @@ func (d *LineChartDrawer) SetOptions(opts port.LineChartOptions) {
 	// Keep max points trimming consistent.
 	//d.trimLocked()
 
-	d.raster.Refresh()
+	d.refreshRaster()
 }
 
 func (d *LineChartDrawer) variableShown(i int) bool { return d.shownIndices[i] }
@@ -296,7 +311,7 @@ func (d *LineChartDrawer) ToggleItem(it *uport.LegendItem) {
 	d.mu.Unlock()
 
 	// repaint
-	d.raster.Refresh()
+	d.refreshRaster()
 }
 
 func (d *LineChartDrawer) Push(at time.Time, val any) {
@@ -325,7 +340,7 @@ func (d *LineChartDrawer) handleMonoVariableInput(at time.Time, val any) {
 
 		// append as 1-element slice
 		d.data.Append(at, []int{v})
-		d.raster.Refresh()
+		d.refreshRaster()
 	})
 }
 
@@ -335,7 +350,7 @@ func (d *LineChartDrawer) handleMultiVariableInput(at time.Time, nums *[]int) {
 			return
 		}
 		d.data.Append(at, *nums)
-		d.raster.Refresh()
+		d.refreshRaster()
 	})
 }
 
@@ -439,7 +454,7 @@ func (d *LineChartDrawer) ZoomIn() {
 		d.zoomWindow = zoomMin
 	}
 	d.mu.Unlock()
-	d.raster.Refresh()
+	d.refreshRaster()
 }
 
 func (d *LineChartDrawer) ZoomOut() {
@@ -457,7 +472,7 @@ func (d *LineChartDrawer) ZoomOut() {
 		d.zoomWindow = 0
 	}
 	d.mu.Unlock()
-	d.raster.Refresh()
+	d.refreshRaster()
 }
 
 /* ---------------------------
