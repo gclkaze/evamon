@@ -7,6 +7,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 	"github.com/gclkaze/evamon/cmd/internal/ui/data"
 	dport "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
@@ -25,6 +26,7 @@ type LineChartWidget struct {
 
 	drawer    *LineChartDrawer
 	lastFetch *lastUpdatedLabel
+	tooltip   *chartTooltip
 	root      *fyne.Container
 	card      *widget.Card
 
@@ -55,6 +57,7 @@ func NewLineChartWidget(drawer *LineChartDrawer, title, description string, widt
 
 	w.drawer = drawer
 	w.lastFetch = newLastUpdatedLabel()
+	w.tooltip = newChartTooltip()
 
 	// Put chart in a max container so it expands nicely inside the card
 	chart := container.NewMax(w.drawer.Object())
@@ -77,6 +80,7 @@ func (w *LineChartWidget) CreateRenderer() fyne.WidgetRenderer {
 		widget: w,
 		objects: []fyne.CanvasObject{
 			w.drawer.Object(),
+			w.tooltip.Object(),
 		},
 	}
 }
@@ -103,7 +107,7 @@ func (w *LineChartWidget) Object() fyne.CanvasObject {
 }
 
 // Push adds a point to the drawer and updates the last-fetch label.
-// IMPORTANT: Call this on the UI thread (RunOnMain) if you’re pushing from goroutines.
+// IMPORTANT: Call this on the UI thread (RunOnMain) if you're pushing from goroutines.
 func (w *LineChartWidget) Push(at time.Time, val any) {
 	w.drawer.Push(at, val)
 	w.lastFetch.update(at)
@@ -113,14 +117,14 @@ func (w *LineChartWidget) LastUpdatedLabel() uport.UIObject {
 	return w.lastFetch
 }
 
-// Optional: allow external resizing (if you use WithoutLayout somewhere)
 func (w *LineChartWidget) Resize(size fyne.Size) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	w.size = size
-	w.root.Resize(size)
-	w.drawer.Resize(size.Width, size.Height)
+	// IMPORTANT: must call BaseWidget.Resize so baseObject.size is updated.
+	// Fyne uses BaseWidget.Size() for hit-testing (hover, tap, etc.).
+	// Without this, the widget appears zero-sized to the event system and
+	// never receives desktop.Hoverable (or any pointer) events.
+	// BaseWidget.Resize also calls Renderer.Layout, which handles
+	// w.root, drawer, and tooltip resizing.
+	w.BaseWidget.Resize(size)
 }
 
 // Optional: if you ever want to change title at runtime
@@ -138,12 +142,39 @@ func (w *LineChartWidget) SetDescription(desc string) {
 	w.card.SetSubTitle(w.description)
 }
 
+// desktop.Hoverable implementation — shows a per-point tooltip on mouse hover.
+
+func (w *LineChartWidget) MouseIn(_ *desktop.MouseEvent) {}
+
+func (w *LineChartWidget) MouseOut() {
+	w.tooltip.Hide()
+}
+
+func (w *LineChartWidget) MouseMoved(e *desktop.MouseEvent) {
+	idx, times, values, found := w.drawer.HitTestX(e.Position.X, w.size.Width)
+	if !found || idx >= len(times) {
+		w.tooltip.Hide()
+		return
+	}
+	vars := w.drawer.Variables()
+	shown := w.drawer.ShownIndices()
+	seriesVals := make([]int, len(vars))
+	for j := range vars {
+		if j < len(values) && idx < len(values[j]) {
+			seriesVals[j] = values[j][idx]
+		}
+	}
+	w.tooltip.Update(e.Position, w.size, times[idx], vars, seriesVals, shown)
+}
+
 type LineChartWidgetRenderer struct {
 	widget  *LineChartWidget
 	objects []fyne.CanvasObject
 }
 
 func (r *LineChartWidgetRenderer) Layout(size fyne.Size) {
+	r.widget.size = size
+
 	// size the card/root
 	r.widget.root.Resize(size)
 
@@ -153,6 +184,9 @@ func (r *LineChartWidgetRenderer) Layout(size fyne.Size) {
 
 	// and inform the drawer so it can redraw using this size
 	r.widget.drawer.Resize(size.Width, size.Height)
+
+	// give the tooltip overlay the full widget area so it can position freely
+	r.widget.tooltip.Object().Resize(size)
 }
 
 func (r *LineChartWidgetRenderer) MinSize() fyne.Size {
@@ -172,3 +206,4 @@ func (r *LineChartWidgetRenderer) Destroy() {}
 
 var _ dport.DiagramWidget = (*LineChartWidget)(nil)
 var _ uport.UIObject = (*LineChartWidget)(nil)
+var _ desktop.Hoverable = (*LineChartWidget)(nil)

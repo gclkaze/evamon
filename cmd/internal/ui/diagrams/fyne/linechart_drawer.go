@@ -997,6 +997,69 @@ func blendPixel(img *image.RGBA, x, y int, c color.Color, alpha float64) {
 	img.Pix[i+3] = uint8(clamp0164(outA) * 255)
 }
 
+// Vars returns the number of data series configured on this drawer.
+func (d *LineChartDrawer) Vars() int { return d.vars }
+
+// Variables returns the per-series style information (name, color).
+func (d *LineChartDrawer) Variables() []port.VariableStyle { return d.opts.Variables }
+
+// ShownIndices returns a copy of the current series-visibility map.
+func (d *LineChartDrawer) ShownIndices() map[int]bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	out := make(map[int]bool, len(d.shownIndices))
+	for k, v := range d.shownIndices {
+		out[k] = v
+	}
+	return out
+}
+
+// HitTestX maps a logical-unit X position (Fyne dp) to the nearest data point
+// index in the current zoom window. widgetW is the full widget width in dp.
+// Returns (idx, times, values, true) on success, or (0, nil, nil, false) when
+// there is no data.
+func (d *LineChartDrawer) HitTestX(pixX, widgetW float32) (idx int, times []time.Time, values [][]int, found bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.data == nil {
+		return
+	}
+
+	plotX0 := d.opts.PadL
+	plotW := widgetW - d.opts.PadL - d.opts.PadR
+	if plotW <= 1 {
+		return
+	}
+
+	start := d.zoomedStartLocked()
+	times, values = d.data.ReadWindow(start, 0)
+	n := d.pointCountSafeFromSnapshot(len(times), values)
+	if n == 0 {
+		return
+	}
+	if n < len(times) {
+		times = times[:n]
+	}
+
+	// Clamp to plot bounds so edge values are reachable.
+	if pixX < plotX0 {
+		pixX = plotX0
+	} else if pixX > plotX0+plotW {
+		pixX = plotX0 + plotW
+	}
+
+	t := (pixX - plotX0) / plotW
+	idx = int(math.Round(float64(t) * float64(n-1)))
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= n {
+		idx = n - 1
+	}
+	return idx, times, values, true
+}
+
 func clamp0164(x float64) float64 {
 	if x < 0 {
 		return 0
