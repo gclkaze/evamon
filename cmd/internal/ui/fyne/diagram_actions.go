@@ -188,6 +188,30 @@ func (h *DiagramActionHandler) Filters(jobID string, d port.IDiagram) {
 	win.Show()
 }
 
+func (h *DiagramActionHandler) Operations(jobID string, d port.IDiagram) {
+	setups := d.GetSetup()
+	if d == nil || len(setups) == 0 {
+		return
+	}
+	setupItem := &setups[0]
+
+	var components []models.FilterComponent
+	if setupItem.Filter != nil && setupItem.Filter.Setup != nil {
+		components = setupItem.Filter.Setup.Components
+	}
+
+	windows := fyne.CurrentApp().Driver().AllWindows()
+	if len(windows) == 0 {
+		return
+	}
+	parent := windows[0]
+
+	ShowOperationsModal(parent, components, nil, func(items []models.FilterItem) {
+		// TODO: persist the returned FilterItems to the diagram setup
+		_ = items
+	})
+}
+
 func (h *DiagramActionHandler) validateExpression(expr string, d port.IDiagram) error {
 	expr = strings.TrimSpace(expr)
 	if expr == "" {

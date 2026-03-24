@@ -74,11 +74,15 @@ func (f *DiagramToolbarFactory) buildChildren(jobID string, d port.IDiagram) []p
 			}
 		}
 
+		operationsBtn := f.renderer.Controls().IconButton(port.IconOperations, func() {
+			f.renderer.Actions().Operations(jobID, d)
+		})
+
 		children = append(children, filtersBtn)
 		if zoomInBtn != nil {
 			children = append(children, zoomInBtn, zoomOutBtn)
 		}
-		children = append(children, downloadBtn, maximizeBtn)
+		children = append(children, downloadBtn, operationsBtn, maximizeBtn)
 
 	}
 
