@@ -512,3 +512,79 @@ type BoolFillToolbarFactory  struct{}                    // returns nil — no t
 `DiagramUIRefs.Toolbar` must tolerate nil gracefully — the dashboard layout must not allocate space for it when absent.
 
 **Impact**: `ChartRegistry`, `DiagramUIRefs`, and the `RebuildToolbar` closure are unaffected — the factory is only invoked at construction time and on toolbar rebuild triggers.
+
+---
+
+### Operations: Persistence, Startup Loading, Condition Evaluation, and Evacron Triggering
+
+#### Ownership: Operations are per chart
+
+`[]TriggerRule` is scoped **per diagram (chart)**. Each chart owns its own rule set. Conditions reference that chart's `FilterComponent` IDs and action files are logically tied to what the chart is monitoring. Mapping: `DiagramProject.Operations []TriggerRule` / `DashboardDiagramEntry.Operations []TriggerRule`.
+
+#### JSON schema changes
+
+Add an `Operations` field to the diagram-level JSON models:
+
+```go
+// In viewproject or dashboardproject (whichever holds per-diagram config):
+type DiagramEntry struct {
+    // ... existing fields ...
+    Operations []TriggerRule `json:"operations,omitempty"`
+}
+```
+
+`TriggerRule` (already defined in `models/triggerrule.go`) must be JSON-serialisable. Verify that `ActionFile` (`.eva` path) round-trips cleanly. `omitempty` keeps existing files unchanged until rules are added.
+
+#### Operations modal — load and save
+
+- **Load**: when `ShowOperationsModal` is called from a diagram's toolbar, pass `diagramEntry.Operations` (or a deep copy) as `initialRules`. The modal already accepts `initialRules []TriggerRule`.
+- **Save** (`onSave` callback): write the returned `[]TriggerRule` back into the in-memory `DiagramEntry`, then persist the whole view/dashboard project to `~/.evamon/lib/<name>.json`. No partial saves — rewrite the full file to avoid partial-update bugs.
+- Keep the existing `OperationsStateDifferentiator` gate: the Save button stays disabled until `HasChanges()` is true, so accidental no-op writes are avoided.
+
+#### Startup loading
+
+`ViewService` / `DashboardBuilder` already deserialises the project JSON on startup. Once `Operations` is part of the JSON model it is loaded automatically. After deserialisation, pass each diagram's `[]TriggerRule` into `DiagramUIRefs` (add a `TriggerRules []TriggerRule` field) so the evaluation loop can access them without re-reading the file.
+
+#### Condition evaluation
+
+Evaluation must run on every new data point, inside the existing data-push path:
+
+```
+MultiSeriesRing.Append()
+  → evaluates FilterComponents already (ConditionResults)
+  → after filter eval, iterate DiagramUIRefs.TriggerRules
+      for each rule: evaluate rule.Expression using pkg/utils.RunExpression()
+                     if true → fire trigger (see below)
+```
+
+- Use the same `tafexpr`-based `RunExpression()` already used by the filter system — no new evaluator needed.
+- A rule fires only when its condition **transitions from false to true** (rising edge), not on every point while it is true. Track `lastFired map[OriginalComponentID]bool` per diagram to detect the transition.
+- `MaintainLink` is a UI concern only; by the time rules reach the evaluator, `BreakLink()` has already materialised label/expression into the rule struct.
+
+#### Triggering Evacron — WebSocket message
+
+When a rule fires, evamon sends a message to Evacron over the existing WebSocket connection requesting execution of the rule's action files:
+
+```go
+// Proposed outbound message type (add to models/):
+type TriggerOperationMsg struct {
+    Type    string   `json:"type"`    // "triggerOperation"
+    JobID   string   `json:"jobId"`
+    RuleID  string   `json:"ruleId"`  // OriginalComponentID
+    Files   []string `json:"files"`   // ordered .eva paths from ActionFile slice
+}
+```
+
+- Reuse the existing `wsclient` write path. Add a `SendMessage(v any) error` method (or equivalent) if not already present.
+- Evacron is responsible for executing the `.eva` files in order. Evamon does not wait for a response or retry — fire-and-forget is sufficient for the initial implementation.
+- If the WebSocket is not connected at the time of firing, log the missed trigger and skip — do not queue or retry.
+
+#### Summary of work items
+
+1. Decide and document final ownership (per-diagram recommended).
+2. Add `Operations []TriggerRule` to the relevant JSON model structs.
+3. Implement save-to-file in the `onSave` callback of `ShowOperationsModal`.
+4. Add `TriggerRules []TriggerRule` to `DiagramUIRefs`; populate on startup from deserialised JSON.
+5. Add rising-edge condition evaluation in `MultiSeriesRing.Append()` (or a wrapper in `WidgetService.DispatchValue()`).
+6. Define `TriggerOperationMsg` and implement the WebSocket send in `wsclient`.
+7. Wire the fired trigger → `wsclient.SendMessage(TriggerOperationMsg{...})`.
