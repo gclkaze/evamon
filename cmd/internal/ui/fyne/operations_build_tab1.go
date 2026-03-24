@@ -12,6 +12,7 @@ import (
 )
 
 func buildTab1(state *OperationsModalState) fyne.CanvasObject {
+
 	leftList := widget.NewList(
 		func() int { return len(state.AvailableComponents) },
 		func() fyne.CanvasObject {
@@ -21,31 +22,61 @@ func buildTab1(state *OperationsModalState) fyne.CanvasObject {
 			obj.(*widget.Label).SetText(state.AvailableComponents[id].Label)
 		},
 	)
-	var rightList *widget.List
 
+	var rightList *widget.List
 	rightList = widget.NewList(
-		func() int { return len(state.SelectedItems) },
+		func() int { return len(state.SelectedRules) },
 		func() fyne.CanvasObject {
-			return container.NewHBox(
+			return container.NewBorder(
+				nil, nil, nil,
+				container.NewHBox(
+					widget.NewCheck("🔗 Maintain link", nil),
+					widget.NewButton("Edit", nil),
+				),
 				widget.NewLabel(""),
-				layout.NewSpacer(),
-				widget.NewCheck("🔗 Maintain link", nil),
 			)
 		},
 		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			item := state.SelectedItems[id]
+			rule := state.SelectedRules[id]
 			row := obj.(*fyne.Container)
-			label := row.Objects[0].(*widget.Label)
-			check := row.Objects[2].(*widget.Check)
 
-			label.SetText(item.ResolvedLabel(state.AvailableComponents))
-			check.SetChecked(item.MaintainLink)
+			label := row.Objects[0].(*widget.Label)
+			btnBox := row.Objects[1].(*fyne.Container)
+			check := btnBox.Objects[0].(*widget.Check)
+			editBtn := btnBox.Objects[1].(*widget.Button)
+
+			label.SetText(rule.ResolvedLabel(state.AvailableComponents))
+
+			check.SetChecked(rule.MaintainLink)
+
+			if rule.Edited {
+				check.Disable()
+			} else {
+				check.Enable()
+			}
+
 			check.OnChanged = func(checked bool) {
-				item.MaintainLink = checked
+				rule.MaintainLink = checked
 				if !checked {
-					item.BreakLink(state.AvailableComponents)
+					rule.BreakLink(state.AvailableComponents)
+					editBtn.Enable()
+				} else {
+					rule.RestoreLink()
+					editBtn.Disable()
 				}
 				rightList.Refresh()
+			}
+
+			if rule.MaintainLink {
+				editBtn.Disable()
+			} else {
+				editBtn.Enable()
+			}
+
+			editBtn.OnTapped = func() {
+				showConditionDetailDialog(rule, state.AvailableComponents, func() {
+					rightList.Refresh()
+				}, state.ParentWindow)
 			}
 		},
 	)
@@ -73,37 +104,39 @@ func buildTab1(state *OperationsModalState) fyne.CanvasObject {
 		}
 		c := state.AvailableComponents[selectedAvailable]
 
-		// prevent duplicates
-		for _, item := range state.SelectedItems {
-			if item.SourceComponentID == c.ID {
+		for _, rule := range state.SelectedRules {
+			if rule.SourceComponentID == c.ID {
 				return
 			}
 		}
 
-		state.SelectedItems = append(state.SelectedItems, models.NewFilterItem(c))
+		state.SelectedRules = append(state.SelectedRules, models.NewTriggerRule(c))
 		rightList.Refresh()
 	})
 
 	removeBtn := widget.NewButton("◀", func() {
-		if selectedChosen < 0 || selectedChosen >= len(state.SelectedItems) {
+		if selectedChosen < 0 || selectedChosen >= len(state.SelectedRules) {
 			return
 		}
 
-		item := state.SelectedItems[selectedChosen]
+		rule := state.SelectedRules[selectedChosen]
 
-		if len(item.Files) > 0 {
+		if len(rule.Actions) > 0 {
 			dialog.ShowConfirm(
-				"Remove Constraint",
+				"Remove Condition",
 				fmt.Sprintf(
-					"This constraint is assigned to %d file(s). Removing it will drop those assignments. Continue?",
-					len(item.Files),
+					"This condition has %d action(s) assigned. Removing it will drop those actions. Continue?",
+					len(rule.Actions),
 				),
 				func(confirmed bool) {
 					if confirmed {
-						state.SelectedItems = append(
-							state.SelectedItems[:selectedChosen],
-							state.SelectedItems[selectedChosen+1:]...,
+						state.SelectedRules = append(
+							state.SelectedRules[:selectedChosen],
+							state.SelectedRules[selectedChosen+1:]...,
 						)
+						if state.ActiveRule != nil && state.ActiveRule == rule {
+							state.ActiveRule = nil
+						}
 						selectedChosen = -1
 						rightList.Refresh()
 					}
@@ -113,10 +146,13 @@ func buildTab1(state *OperationsModalState) fyne.CanvasObject {
 			return
 		}
 
-		state.SelectedItems = append(
-			state.SelectedItems[:selectedChosen],
-			state.SelectedItems[selectedChosen+1:]...,
+		state.SelectedRules = append(
+			state.SelectedRules[:selectedChosen],
+			state.SelectedRules[selectedChosen+1:]...,
 		)
+		if state.ActiveRule != nil && state.ActiveRule == rule {
+			state.ActiveRule = nil
+		}
 		selectedChosen = -1
 		rightList.Refresh()
 	})
@@ -129,9 +165,44 @@ func buildTab1(state *OperationsModalState) fyne.CanvasObject {
 	)
 
 	return container.New(
-		threeColLayout(200, 60, 200),
-		container.NewBorder(widget.NewLabel("Available"), nil, nil, nil, leftList),
+		threeColLayout(200, 60, 350),
+		container.NewBorder(widget.NewLabel("Available Conditions"), nil, nil, nil, leftList),
 		buttons,
-		container.NewBorder(widget.NewLabel("Selected"), nil, nil, nil, rightList),
+		container.NewBorder(widget.NewLabel("Active Conditions"), nil, nil, nil, rightList),
 	)
+}
+
+func showConditionDetailDialog(rule *models.TriggerRule, components []models.FilterComponent, onUpdated func(), parent fyne.Window) {
+	labelEntry := widget.NewEntry()
+	labelEntry.SetText(rule.Label)
+
+	expressionEntry := widget.NewMultiLineEntry()
+	expressionEntry.SetText(rule.Expression)
+
+	form := widget.NewForm(
+		widget.NewFormItem("Label", labelEntry),
+		widget.NewFormItem("Expression", expressionEntry),
+	)
+
+	var d dialog.Dialog
+
+	saveBtn := widget.NewButton("Save", func() {
+		rule.Label = labelEntry.Text
+		rule.Expression = expressionEntry.Text
+		rule.Edited = true
+		onUpdated()
+		d.Hide()
+	})
+	saveBtn.Importance = widget.HighImportance
+
+	cancelBtn := widget.NewButton("Cancel", func() {
+		d.Hide()
+	})
+
+	buttons := container.NewHBox(layout.NewSpacer(), cancelBtn, saveBtn, layout.NewSpacer())
+	content := container.NewBorder(nil, buttons, nil, nil, form)
+
+	d = dialog.NewCustomWithoutButtons("Edit Condition", content, parent)
+	d.Resize(fyne.NewSize(420, 260))
+	d.Show()
 }
