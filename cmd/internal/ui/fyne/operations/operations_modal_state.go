@@ -10,24 +10,29 @@ type OperationsModalState struct {
 	AvailableComponents []models.FilterComponent
 	SelectedRules       []*models.TriggerRule
 	ActiveRule          *models.TriggerRule
+	Differentiator      *models.OperationsStateDifferentiator
+	OnChanged           func()
 }
 
 func NewOperationsModalState(
 	parent fyne.Window,
 	components []models.FilterComponent,
+	initialRules []*models.TriggerRule,
 ) *OperationsModalState {
 	return &OperationsModalState{
 		ParentWindow:        parent,
 		AvailableComponents: components,
-		SelectedRules:       make([]*models.TriggerRule, 0),
+		SelectedRules:       initialRules,
 		ActiveRule:          nil,
+		Differentiator:      models.NewOperationsStateDifferentiator(initialRules),
+		OnChanged:           func() {},
 	}
 }
 
-func (ms *OperationsModalState) pruneAssignments() {
-	// nothing to prune at state level — actions are owned by each TriggerRule
-}
+func (ms *OperationsModalState) pruneAssignments() {}
 
-func (ms *OperationsModalState) isFileAssigned(file *models.ActionFile, item *models.FilterItem) bool {
-	return item.HasFile(file.Path)
+func (ms *OperationsModalState) NotifyChanged() {
+	if ms.OnChanged != nil {
+		ms.OnChanged()
+	}
 }

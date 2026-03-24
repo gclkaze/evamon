@@ -207,8 +207,7 @@ func (h *DiagramActionHandler) Operations(jobID string, d port.IDiagram) {
 	}
 	parent := windows[0]
 
-	operations.ShowOperationsModal(parent, components, func(items []models.TriggerRule) {
-		// TODO: persist the returned FilterItems to the diagram setup
+	operations.ShowOperationsModal(parent, components, []*models.TriggerRule{}, func(items []models.TriggerRule) {
 		_ = items
 	})
 }
