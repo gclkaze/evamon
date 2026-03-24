@@ -45,7 +45,14 @@ cmd/
     │   │   ├── renderer.go
     │   │   ├── layout.go
     │   │   ├── controls.go
-    │   │   └── diagram_actions.go      # Maximize, Filters, Download implementations
+    │   │   ├── diagram_actions.go      # Maximize, Filters, Download implementations
+    │   │   └── operations/             # Operations modal and tabs (see Operations System section)
+    │   │       ├── operations_modal.go
+    │   │       ├── operations_modal_state.go
+    │   │       ├── operations_conditions_tab.go
+    │   │       ├── operations_actions_tab.go
+    │   │       ├── operations_condition_detail_dialog.go
+    │   │       └── three_col_layout.go
     │   ├── diagrams/
     │   │   ├── port/                   # DiagramWidget, EvaWidget, Factory interfaces
     │   │   └── fyne/                   # Concrete widgets and drawers
@@ -145,6 +152,10 @@ The `maximizeAdapter`'s `renderer.Refresh()` uses `CanvasForObject(adapter)` to 
 | `AggregationTree` | `ui/data/aggregation_tree.go` | Nested-map tree of pre-aggregated buckets built from historic data. Immutable after construction. Queried via `IterateLevel()` or level-specific iterators. |
 | `BucketIterator` | `ui/data/aggregation_tree.go` | Typed iterator over a chronologically sorted `[]Bucket` slice. Not goroutine-safe. |
 | `HistoricDataStore` | `ui/data/` | Replaces `MultiSeriesRing` in historic mode. Holds the raw `[]DataPoint` and the built `*AggregationTree`. Never mixed with `MultiSeriesRing` in the same `DiagramUIRefs`. |
+| `TriggerRule` | `models/triggerrule.go` | A condition+action pair. `OriginalComponentID` is the stable key. `MaintainLink` controls whether label/expression are resolved live from the source `FilterComponent`. `Edited` flag set when label/expression are manually overridden. |
+| `ActionFile` | `models/actionfile.go` | Thin wrapper around a `.eva` script path. Ordered within a rule. |
+| `OperationsStateDifferentiator` | `models/operationsstatedifferentiator.go` | Snapshots a rule list at construction; exposes `On*` mutators and `HasChanges()`/`GetDiff()`. Used by the Operations modal to gate the Save button. |
+| `OperationsModalState` | `ui/fyne/operations/operations_modal_state.go` | Shared mutable state across Operations modal tabs: available components, selected rules, active rule, differentiator, and `OnChanged` callback. |
 
 ---
 
@@ -355,6 +366,97 @@ Both selectors trigger a `RebuildToolbar` on change and a drawer refresh via `Di
 - Historic mode diagrams carry a `HistoricDataStore` instead of a `MultiSeriesRing`. The two are never mixed in the same `DiagramUIRefs`.
 - Iterators are **not goroutine-safe** — iterator state (`index`) is per-caller. Each render pass should obtain a fresh iterator via `IterateLevel()`, or call `Reset()` for a deliberate multi-pass render (e.g. first pass for axis scaling, second pass for drawing bars).
 - Level-specific iterators return an **empty iterator** (not nil, not an error) when the requested parent key doesn't exist — callers need no nil checks.
+
+---
+
+## Operations System
+
+The Operations system lets users configure **trigger rules** for a diagram — each rule pairs a filter condition with an ordered list of action files (`.eva` scripts) to execute when that condition fires.
+
+### Package
+
+```
+cmd/internal/ui/fyne/operations/
+├── operations_modal.go               # Entry point: ShowOperationsModal()
+├── operations_modal_state.go         # Shared mutable state for the modal
+├── operations_conditions_tab.go      # "Conditions" tab UI
+├── operations_actions_tab.go         # "Actions" tab UI
+├── operations_condition_detail_dialog.go  # Inline edit dialog for label/expression
+└── three_col_layout.go               # Fixed three-column Fyne layout helper
+```
+
+### Entry Point
+
+```go
+ShowOperationsModal(parent, components, initialRules, onSave)
+```
+
+Opens a 900×660 `dialog.NewCustomWithoutButtons` containing two tabs and a Save/Cancel footer. The **Save** button is disabled until `OperationsStateDifferentiator.HasChanges()` returns true; its importance changes to `SuccessImportance` to signal readiness. On save, each rule calls `BreakLink()` to materialise any linked label/expression, then the resulting `[]TriggerRule` is handed to the `onSave` callback.
+
+### OperationsModalState
+
+Centralises all shared mutable state across tabs:
+
+| Field | Type | Role |
+|---|---|---|
+| `ParentWindow` | `fyne.Window` | Used by dialogs and file pickers |
+| `AvailableComponents` | `[]FilterComponent` | Source pool for the left-hand "Available Conditions" list |
+| `SelectedRules` | `[]*TriggerRule` | Live slice of active rules; mutated directly by tab actions |
+| `ActiveRule` | `*TriggerRule` | Rule currently selected in the Actions tab; nil when none |
+| `Differentiator` | `*OperationsStateDifferentiator` | Tracks whether state has diverged from the initial snapshot |
+| `OnChanged` | `func()` | Callback fired after every mutation; wired to `refreshSaveBtn` |
+
+`NotifyChanged()` invokes `OnChanged`. `pruneAssignments()` is a no-op placeholder for future cleanup logic on tab switch.
+
+### Conditions Tab (`OperationsConditionTab`)
+
+Three-column layout (200 / 60 / 350 px):
+
+- **Left list** — all `AvailableComponents`, shown by label.
+- **Centre buttons** — `▶` adds the selected left item as a new `TriggerRule`; `◀` removes the selected right item (with a confirm dialog if the rule has actions).
+- **Right list** — `SelectedRules`, each row showing the resolved label plus a "🔗 Maintain link" checkbox and an "Edit" button.
+  - **Maintain link on** (default): label and expression are resolved live from the source `FilterComponent`; Edit is disabled.
+  - **Maintain link off**: `BreakLink()` copies label/expression into the rule; Edit is enabled, opening the condition detail dialog.
+  - Toggling the checkbox calls `Differentiator.OnMaintainLinkChanged()`.
+
+### Condition Detail Dialog (`showConditionDetailDialog`)
+
+A 420×260 sub-dialog with Label and Expression entry fields. On save:
+- Writes `rule.Label`, `rule.Expression`, sets `rule.Edited = true`.
+- Calls `Differentiator.OnLabelChanged()` and `Differentiator.OnExpressionChanged()`.
+
+### Actions Tab (`OperationsActionsTab`)
+
+Three-column layout (200 / 60 / 400 px):
+
+- **Left list** — `SelectedRules` with action counts, e.g. `"MyRule  (2 actions)"`. Selecting a rule sets `state.ActiveRule`.
+- **Centre button** — `→` shortcut to open the file picker and add an action to the active rule.
+- **Right panel** — action list for `ActiveRule` with a toolbar (Add / Edit / Remove) and per-row ▲/▼ reorder buttons. File picker is filtered to `.eva` files.
+- Every add/edit/remove/reorder calls `Differentiator.OnActionsChanged()` then `NotifyChanged()`.
+
+### OperationsStateDifferentiator (`models/operationsstatedifferentiator.go`)
+
+Tracks whether the current rule set has diverged from the snapshot taken at modal open time. Uses a `map[ChangeType]bool` to record each category of change independently; `HasChanges()` is true if any entry is true.
+
+**Change types:**
+
+| `ChangeType` constant | Fired by |
+|---|---|
+| `ChangeTypeRuleAdded` | `OnRuleAdded(current)` |
+| `ChangeTypeRuleRemoved` | `OnRuleRemoved(current)` |
+| `ChangeTypeLabelChanged` | `OnLabelChanged(current)` |
+| `ChangeTypeExpressionChanged` | `OnExpressionChanged(current)` |
+| `ChangeTypeMaintainLink` | `OnMaintainLinkChanged(current)` |
+| `ChangeTypeActionsChanged` | `OnActionsChanged(current)` |
+
+Each `On*` method re-evaluates its category against the initial snapshot stored in `initialMap` (`map[OriginalComponentID → snapshotRule]`) and then calls `recompute()` to update `hasChanged`. **Reverting a change clears that category**, so `HasChanges()` returns false only when every category is false again.
+
+`GetDiff(current)` returns a `DiffResult` with:
+- `AddedRules` — rules whose `OriginalComponentID` was not in the initial snapshot.
+- `RemovedRules` — snapshot entries no longer present in `current`.
+- `UpdatedRules` — `*RuleDiff` per rule that changed label, expression, maintain-link, or actions.
+
+`GetDiff` is a pure query — it does not mutate state and does not call `recompute()`.
 
 ---
 

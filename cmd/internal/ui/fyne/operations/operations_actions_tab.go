@@ -17,6 +17,8 @@ type OperationsActionsTab struct {
 	state          *OperationsModalState
 	ruleList       *widget.List
 	actionList     *widget.List
+	actionToolbar  *fyne.Container
+	centerButtons  *fyne.Container
 	selectedAction int
 }
 
@@ -29,14 +31,18 @@ func NewOperationsActionsTab(state *OperationsModalState) *OperationsActionsTab 
 
 func (t *OperationsActionsTab) Build() fyne.CanvasObject {
 	t.actionList = t.buildActionList()
+	t.actionToolbar = t.buildActionToolbar()
+	t.centerButtons = t.buildCenterButtons()
 	t.ruleList = t.buildRuleList()
+
+	t.setActionControlsEnabled(false, t.actionToolbar, t.centerButtons)
 
 	return container.New(
 		threeColLayout(200, 60, 400),
 		container.NewBorder(widget.NewLabel("Conditions"), nil, nil, nil, t.ruleList),
-		t.buildCenterButtons(),
+		t.centerButtons,
 		container.NewBorder(
-			container.NewVBox(widget.NewLabel("Actions"), t.buildActionToolbar()),
+			container.NewVBox(widget.NewLabel("Actions"), t.actionToolbar),
 			nil, nil, nil,
 			t.actionList,
 		),
@@ -54,12 +60,14 @@ func (t *OperationsActionsTab) buildRuleList() *widget.List {
 	l.OnSelected = func(id widget.ListItemID) {
 		t.state.ActiveRule = t.state.SelectedRules[id]
 		t.selectedAction = -1
+		t.setActionControlsEnabled(true, t.actionToolbar, t.centerButtons)
 		t.actionList.Refresh()
 		l.Refresh()
 	}
 	l.OnUnselected = func(id widget.ListItemID) {
 		t.state.ActiveRule = nil
 		t.selectedAction = -1
+		t.setActionControlsEnabled(false, t.actionToolbar, t.centerButtons)
 		t.actionList.Refresh()
 	}
 	t.restoreRuleSelection(l)
@@ -213,4 +221,24 @@ func (t *OperationsActionsTab) moveActionDown(index int, l *widget.List) {
 	t.state.Differentiator.OnActionsChanged(t.state.SelectedRules)
 	t.state.NotifyChanged()
 	l.Refresh()
+}
+func (t *OperationsActionsTab) setActionControlsEnabled(enabled bool, toolbar *fyne.Container, centerBtn *fyne.Container) {
+	for _, obj := range toolbar.Objects {
+		if btn, ok := obj.(*widget.Button); ok {
+			if enabled {
+				btn.Enable()
+			} else {
+				btn.Disable()
+			}
+		}
+	}
+	for _, obj := range centerBtn.Objects {
+		if btn, ok := obj.(*widget.Button); ok {
+			if enabled {
+				btn.Enable()
+			} else {
+				btn.Disable()
+			}
+		}
+	}
 }
