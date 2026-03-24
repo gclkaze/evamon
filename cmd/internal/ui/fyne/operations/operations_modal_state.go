@@ -1,4 +1,4 @@
-package fynerenderer
+package operations
 
 import (
 	"fyne.io/fyne/v2"

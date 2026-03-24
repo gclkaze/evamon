@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/gclkaze/evamon/cmd/internal/models"
 	diaw "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
+	"github.com/gclkaze/evamon/cmd/internal/ui/fyne/operations"
 
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 	dia "github.com/gclkaze/evamon/cmd/internal/ui/port"
@@ -206,7 +207,7 @@ func (h *DiagramActionHandler) Operations(jobID string, d port.IDiagram) {
 	}
 	parent := windows[0]
 
-	ShowOperationsModal(parent, components, func(items []models.TriggerRule) {
+	operations.ShowOperationsModal(parent, components, func(items []models.TriggerRule) {
 		// TODO: persist the returned FilterItems to the diagram setup
 		_ = items
 	})
