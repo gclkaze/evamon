@@ -14,11 +14,12 @@ func ShowOperationsModal(
 	parent fyne.Window,
 	components []models.FilterComponent,
 	initialRules []*models.TriggerRule,
+	validator ExpressionValidator,
 	onSave func([]models.TriggerRule),
 ) {
 	state := NewOperationsModalState(parent, components, initialRules)
 
-	condTab := NewOperationsConditionTab(state)
+	condTab := NewOperationsConditionTab(state, validator)
 	actTab := NewOperationsActionsTab(state)
 
 	tab1 := container.NewTabItem("Conditions", condTab.Build())

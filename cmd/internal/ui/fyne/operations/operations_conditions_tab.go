@@ -2,6 +2,7 @@ package operations
 
 import (
 	"fmt"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -17,13 +18,15 @@ type OperationsConditionTab struct {
 	rightList     *widget.List
 	selectedLeft  int
 	selectedRight int
+	validator     ExpressionValidator
 }
 
-func NewOperationsConditionTab(state *OperationsModalState) *OperationsConditionTab {
+func NewOperationsConditionTab(state *OperationsModalState, validator ExpressionValidator) *OperationsConditionTab {
 	return &OperationsConditionTab{
 		state:         state,
 		selectedLeft:  -1,
 		selectedRight: -1,
+		validator:     validator,
 	}
 }
 
@@ -32,11 +35,17 @@ func (t *OperationsConditionTab) Build() fyne.CanvasObject {
 	t.rightList = t.buildRightList()
 	buttons := t.buildButtons()
 
+	rightPanel := container.NewBorder(
+		container.NewVBox(widget.NewLabel("Active Conditions"), t.newRuleBtn()),
+		nil, nil, nil,
+		t.rightList,
+	)
+
 	return container.New(
-		threeColLayout(300, 100, 650),
+		threeColLayout(200, 60, 350),
 		container.NewBorder(widget.NewLabel("Available Conditions"), nil, nil, nil, t.leftList),
 		buttons,
-		container.NewBorder(widget.NewLabel("Active Conditions"), nil, nil, nil, t.rightList),
+		rightPanel,
 	)
 }
 
@@ -186,7 +195,25 @@ func (t *OperationsConditionTab) toggleMaintainLink(rule *models.TriggerRule, ch
 }
 
 func (t *OperationsConditionTab) openConditionDetail(rule *models.TriggerRule) {
-	showConditionDetailDialog(rule, t.state, func() {
+	showConditionDetailDialog(rule, t.state, t.validator, func(updated *models.TriggerRule) {
+		t.rightList.Refresh()
+	}, t.state.ParentWindow)
+}
+
+func (t *OperationsConditionTab) newRuleBtn() *widget.Button {
+	return widget.NewButton("+ New", func() {
+		t.openNewConditionDetail()
+	})
+}
+
+func (t *OperationsConditionTab) openNewConditionDetail() {
+	showConditionDetailDialog(nil, t.state, t.validator, func(rule *models.TriggerRule) {
+		if strings.TrimSpace(rule.Label) == "" && strings.TrimSpace(rule.Expression) == "" {
+			return
+		}
+		t.state.SelectedRules = append(t.state.SelectedRules, rule)
+		t.state.Differentiator.OnRuleAdded(t.state.SelectedRules)
+		t.state.NotifyChanged()
 		t.rightList.Refresh()
 	}, t.state.ParentWindow)
 }

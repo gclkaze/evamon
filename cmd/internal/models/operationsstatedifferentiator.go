@@ -149,6 +149,11 @@ func (d *OperationsStateDifferentiator) GetDiff(current []*TriggerRule) DiffResu
 func (d *OperationsStateDifferentiator) OnRuleAdded(current []*TriggerRule) {
 	changed := false
 	for _, r := range current {
+		// empty OriginalComponentID = brand new rule, always counts as added
+		if r.OriginalComponentID == "" {
+			changed = true
+			break
+		}
 		if _, existed := d.initialMap[r.OriginalComponentID]; !existed {
 			changed = true
 			break
@@ -157,11 +162,12 @@ func (d *OperationsStateDifferentiator) OnRuleAdded(current []*TriggerRule) {
 	d.changes[ChangeTypeRuleAdded] = changed
 	d.recompute()
 }
-
 func (d *OperationsStateDifferentiator) OnRuleRemoved(current []*TriggerRule) {
 	currentMap := make(map[string]bool)
 	for _, r := range current {
-		currentMap[r.OriginalComponentID] = true
+		if r.OriginalComponentID != "" {
+			currentMap[r.OriginalComponentID] = true
+		}
 	}
 	changed := false
 	for _, s := range d.initialRules {

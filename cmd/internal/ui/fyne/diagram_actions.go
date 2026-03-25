@@ -207,14 +207,17 @@ func (h *DiagramActionHandler) Operations(jobID string, d port.IDiagram) {
 	}
 	parent := windows[0]
 
-	/*	operations.ShowOperationsModal(parent, components, []*models.TriggerRule{}, func(items []models.TriggerRule) {
-		_ = items
-	})*/
+	v := func(expr string) error {
+		return h.validateExpression(expr, d)
+	}
 
 	operations.ShowOperationsModal(
 		parent,
 		components,
 		setupItem.GetTriggerRules(),
+
+		v,
+
 		func(rules []models.TriggerRule) {
 			setupItem.SetTriggerRules(rules)
 			owner := d.GetDiagramOwner()

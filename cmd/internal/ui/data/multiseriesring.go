@@ -103,16 +103,12 @@ func (m *MultiSeriesRing) Append(at time.Time, nums []int) {
 	if theFilter != nil {
 		setup := theFilter.Setup
 		if setup != nil && len(setup.Components) > 0 {
-			// grow ConditionResults in sync with times
 			setup.ConditionResults = append(setup.ConditionResults, models.ConditionResult{
 				Results: make(map[string]bool),
 			})
 
 			for i := range setup.Components {
 				c := setup.Components[i]
-				/*				if !c.Enabled {
-								continue
-							}*/
 				res, err := utils.RunExpression(c.Expression, m.varnames, floats)
 				if err == nil {
 					setup.ConditionResults[last].Results[c.ID] = res
@@ -120,6 +116,14 @@ func (m *MultiSeriesRing) Append(at time.Time, nums []int) {
 			}
 		}
 	}
+
+	/*	triggers := m.owner.GetTriggerRules()
+		if triggers != nil {
+			for i := range triggers {
+				trigger := triggers[i]
+
+			}
+		}*/
 
 	m.trimLocked()
 }

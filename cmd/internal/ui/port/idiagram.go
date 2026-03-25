@@ -10,5 +10,6 @@ type IDiagram interface {
 	GetDiagramOwner() models.DiagramOwner
 	GetSetup() []models.SetupItem
 	GetFilter() *models.Filter
+	GetTriggerRules() []*models.TriggerRule
 	GetType() models.DiagramType
 }

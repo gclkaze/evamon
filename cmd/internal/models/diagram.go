@@ -37,6 +37,15 @@ func (d Diagram) GetFilter() *Filter {
 	return setups[0].GetFilter()
 }
 
+func (d Diagram) GetTriggerRules() []*TriggerRule {
+	setups := d.GetSetup()
+	if len(setups) == 0 {
+		return nil
+	}
+
+	return setups[0].GetTriggerRules()
+}
+
 func (d Diagram) GetID() string {
 	return d.ID
 }
