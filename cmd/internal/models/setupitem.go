@@ -13,8 +13,8 @@ type SetupItem struct {
 	// - for bar diagrams:     BarStyle
 	DiagramStyle Style `json:"diagramStyle,omitempty"`
 
-	Filter *Filter `json:"filter,omitempty"`
-
+	Filter             *Filter          `json:"filter,omitempty"`
+	TriggerRules       []*TriggerRule   `json:"triggerRules,omitempty"`
 	MultiVariableSetup []MultiSetupItem `json:"multiVariableSetup,omitempty"`
 }
 
@@ -38,6 +38,22 @@ func (s SetupItem) GetFilterMode() FilterMode {
 
 func (s SetupItem) GetFilter() *Filter {
 	return s.Filter
+}
+
+func (s *SetupItem) GetTriggerRules() []*TriggerRule {
+	if s.TriggerRules == nil {
+		return []*TriggerRule{}
+	}
+	return s.TriggerRules
+}
+
+func (s *SetupItem) SetTriggerRules(rules []TriggerRule) {
+	ptrs := make([]*TriggerRule, len(rules))
+	for i := range rules {
+		r := rules[i]
+		ptrs[i] = &r
+	}
+	s.TriggerRules = ptrs
 }
 
 func (s *SetupItem) HandleFilterChange(changes []FilterComponentChange, mod FilterMode) {

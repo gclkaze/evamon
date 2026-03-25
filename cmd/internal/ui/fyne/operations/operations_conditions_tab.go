@@ -33,7 +33,7 @@ func (t *OperationsConditionTab) Build() fyne.CanvasObject {
 	buttons := t.buildButtons()
 
 	return container.New(
-		threeColLayout(300, 100, 350),
+		threeColLayout(300, 100, 650),
 		container.NewBorder(widget.NewLabel("Available Conditions"), nil, nil, nil, t.leftList),
 		buttons,
 		container.NewBorder(widget.NewLabel("Active Conditions"), nil, nil, nil, t.rightList),

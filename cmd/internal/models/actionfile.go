@@ -1,7 +1,7 @@
 package models
 
 type ActionFile struct {
-	Path string
+	Path string `json:"path"`
 }
 
 func NewActionFile(path string) *ActionFile {

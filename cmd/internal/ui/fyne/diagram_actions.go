@@ -207,9 +207,23 @@ func (h *DiagramActionHandler) Operations(jobID string, d port.IDiagram) {
 	}
 	parent := windows[0]
 
-	operations.ShowOperationsModal(parent, components, []*models.TriggerRule{}, func(items []models.TriggerRule) {
+	/*	operations.ShowOperationsModal(parent, components, []*models.TriggerRule{}, func(items []models.TriggerRule) {
 		_ = items
-	})
+	})*/
+
+	operations.ShowOperationsModal(
+		parent,
+		components,
+		setupItem.GetTriggerRules(),
+		func(rules []models.TriggerRule) {
+			setupItem.SetTriggerRules(rules)
+			owner := d.GetDiagramOwner()
+			err := owner.Save()
+			if err != nil {
+				NewErrorAlert(err.Error()).Show()
+			}
+		},
+	)
 }
 
 func (h *DiagramActionHandler) validateExpression(expr string, d port.IDiagram) error {

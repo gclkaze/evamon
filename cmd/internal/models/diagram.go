@@ -70,8 +70,8 @@ type setupItemRaw struct {
 	DiagramStyle json.RawMessage `json:"diagramStyle,omitempty"`
 	WindowStyle  *WindowStyle    `json:"windowStyle,omitempty"`
 
-	Filter *Filter `json:"filter,omitempty"`
-
+	Filter             *Filter           `json:"filter,omitempty"`
+	TriggerRules       []*TriggerRule    `json:"triggerRules,omitempty"`
 	MultiVariableSetup []json.RawMessage `json:"multiVariableSetup,omitempty"`
 }
 
@@ -170,6 +170,7 @@ func (d *Diagram) UnmarshalJSON(b []byte) error {
 			VariableType: item.VariableType,
 			WindowStyle:  item.WindowStyle,
 			Filter:       item.Filter,
+			TriggerRules: item.TriggerRules,
 		}
 
 		// Parse top-level diagramStyle (for single-variable diagrams OR “bundle-level” style)

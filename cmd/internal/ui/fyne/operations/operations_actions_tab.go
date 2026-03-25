@@ -38,7 +38,7 @@ func (t *OperationsActionsTab) Build() fyne.CanvasObject {
 	t.setActionControlsEnabled(false, t.actionToolbar, t.centerButtons)
 
 	return container.New(
-		threeColLayout(200, 60, 400),
+		threeColLayout(200, 60, 600),
 		container.NewBorder(widget.NewLabel("Conditions"), nil, nil, nil, t.ruleList),
 		t.centerButtons,
 		container.NewBorder(

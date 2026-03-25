@@ -28,7 +28,7 @@ func ShowOperationsModal(
 
 	var d dialog.Dialog
 
-	saveBtn := buildSaveBtn(state, tabs, condTab, actTab, tab1, tab2, onSave, &d)
+	saveBtn := buildSaveBtn(state, onSave, &d)
 	cancelBtn := widget.NewButton("Cancel", func() { d.Hide() })
 
 	state.OnChanged = func() { refreshSaveBtn(saveBtn, state) }
@@ -51,11 +51,6 @@ func ShowOperationsModal(
 
 func buildSaveBtn(
 	state *OperationsModalState,
-	tabs *container.AppTabs,
-	condTab *OperationsConditionTab,
-	actTab *OperationsActionsTab,
-	tab1 *container.TabItem,
-	tab2 *container.TabItem,
 	onSave func([]models.TriggerRule),
 	d *dialog.Dialog,
 ) *widget.Button {

@@ -1,15 +1,15 @@
 package models
 
 type TriggerRule struct {
-	Label      string
-	Expression string
+	Label      string `json:"label,omitempty"`
+	Expression string `json:"expression,omitempty"`
 
-	SourceComponentID   string
-	OriginalComponentID string
-	MaintainLink        bool
-	Edited              bool
+	SourceComponentID   string `json:"sourceComponentID,omitempty"`
+	OriginalComponentID string `json:"originalComponentID"`
+	MaintainLink        bool   `json:"maintainLink"`
+	Edited              bool   `json:"edited"`
 
-	Actions []*ActionFile
+	Actions []*ActionFile `json:"actions,omitempty"`
 }
 
 func NewTriggerRule(source FilterComponent) *TriggerRule {
