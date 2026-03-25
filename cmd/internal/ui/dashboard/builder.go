@@ -16,9 +16,10 @@ import (
 // BindingTarget is what your socket binder needs:
 // when a message arrives for (JobID, Variable), call Sink.Push(at, val).
 type BindingTarget struct {
-	JobID    string
-	Variable string
-	Sink     dport.EvaWidget
+	JobID     string
+	DiagramID string
+	Variable  string
+	Sink      dport.EvaWidget
 }
 
 // BuildResult is the output of the builder.
@@ -343,9 +344,10 @@ func (b *Builder) buildBooleanDiagram(jobID string, d *models.Diagram, ref *port
 		ref.Chart = w
 		parts = append(parts, w)
 		bindings = append(bindings, BindingTarget{
-			JobID:    jobID,
-			Variable: s.Variable,
-			Sink:     w,
+			JobID:     jobID,
+			DiagramID: d.ID,
+			Variable:  s.Variable,
+			Sink:      w,
 		})
 
 		if si < len(d.Setup)-1 {
@@ -382,9 +384,10 @@ func (b *Builder) buildBarDiagram(jobID string, d *models.Diagram, ref *port.Dia
 		ref.ChartSlot = slot
 		parts = append(parts, slot)
 		bindings = append(bindings, BindingTarget{
-			JobID:    jobID,
-			Variable: s.Variable,
-			Sink:     w,
+			JobID:     jobID,
+			DiagramID: d.ID,
+			Variable:  s.Variable,
+			Sink:      w,
 		})
 		ref.RegisterMainChart(w)
 	}
@@ -424,9 +427,10 @@ func (b *Builder) buildLineDiagram(jobID string, d *models.Diagram, ref *port.Di
 		ref.ChartSlot = slot
 		parts = append(parts, slot)
 		bindings = append(bindings, BindingTarget{
-			JobID:    jobID,
-			Variable: s.Variable,
-			Sink:     w,
+			JobID:     jobID,
+			DiagramID: d.ID,
+			Variable:  s.Variable,
+			Sink:      w,
 		})
 		ref.RegisterMainChart(w)
 	}

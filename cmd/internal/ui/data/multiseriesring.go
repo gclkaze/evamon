@@ -20,6 +20,9 @@ type MultiSeriesRing struct {
 
 	owner    port.IDiagram
 	varnames []string
+
+	triggerSender TriggerSendFunc
+	lastFired     map[string]bool // TriggerOperationMsg.ID (= rule OriginalComponentID) → last evaluation result
 }
 
 func NewMultiSeriesRing(maxPoints int, vars int, owner port.IDiagram, varnames []string) *MultiSeriesRing {
@@ -117,13 +120,9 @@ func (m *MultiSeriesRing) Append(at time.Time, nums []int) {
 		}
 	}
 
-	/*	triggers := m.owner.GetTriggerRules()
-		if triggers != nil {
-			for i := range triggers {
-				trigger := triggers[i]
-
-			}
-		}*/
+	if m.triggerSender != nil {
+		m.evaluateTriggerRules(floats)
+	}
 
 	m.trimLocked()
 }
@@ -206,6 +205,65 @@ func (m *MultiSeriesRing) backfillConditionResults(setup *models.FilterSetup, c 
 func (m *MultiSeriesRing) removeFilterResults(setup *models.FilterSetup, id string) {
 	for i := range setup.ConditionResults {
 		delete(setup.ConditionResults[i].Results, id)
+	}
+}
+
+func (m *MultiSeriesRing) SetTriggerSender(fn TriggerSendFunc) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.triggerSender = fn
+}
+
+// evaluateTriggerRules runs inside the existing mu.Lock in Append.
+// It evaluates each trigger rule's expression and fires the sender in a goroutine
+// on a false→true (rising-edge) transition.
+func (m *MultiSeriesRing) evaluateTriggerRules(floats []float64) {
+	rules := m.owner.GetTriggerRules()
+	if len(rules) == 0 {
+		return
+	}
+
+	var filterComponents []models.FilterComponent
+	if f := m.owner.GetFilter(); f != nil && f.Setup != nil {
+		filterComponents = f.Setup.Components
+	}
+
+	if m.lastFired == nil {
+		m.lastFired = make(map[string]bool)
+	}
+
+	sender := m.triggerSender
+
+	for _, rule := range rules {
+		if len(rule.Actions) == 0 {
+			continue
+		}
+
+		expr := rule.ResolvedExpression(filterComponents)
+		if expr == "" {
+			continue
+		}
+
+		res, err := utils.RunExpression(expr, m.varnames, floats)
+		if err != nil {
+			continue
+		}
+
+		id := rule.OriginalComponentID
+		prev := m.lastFired[id]
+		m.lastFired[id] = res
+
+		// Rising edge: only fire when transitioning false → true.
+		if !res || prev {
+			continue
+		}
+
+		files := make([]string, len(rule.Actions))
+		for i, a := range rule.Actions {
+			files[i] = a.Path
+		}
+		ruleID := id
+		go sender(ruleID, files)
 	}
 }
 

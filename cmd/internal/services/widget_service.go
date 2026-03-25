@@ -1,11 +1,14 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"time"
 
+	"github.com/gclkaze/evamon/cmd/internal/models"
 	"github.com/gclkaze/evamon/cmd/internal/models/ui"
 	"github.com/gclkaze/evamon/cmd/internal/output"
+	"github.com/gclkaze/evamon/cmd/internal/ui/data"
 	"github.com/gclkaze/evamon/cmd/internal/viewproject"
 	"github.com/magiconair/properties"
 
@@ -26,6 +29,8 @@ type WidgetService struct {
 
 	uiHolder        *ui.ProjectUIHolder
 	dashboardHolder *ui.DashboardUIHolder
+
+	triggerSenderFactory func(jobID, diagramID string) data.TriggerSendFunc
 }
 
 func NewWidgetService(r port.Renderer, df porter.Factory) *WidgetService {
@@ -35,6 +40,28 @@ func NewWidgetService(r port.Renderer, df porter.Factory) *WidgetService {
 func (inst *WidgetService) SetSetup(setup MainSetup) {
 	inst.setup = setup
 	inst.logger = setup.GetPrinter()
+
+	inst.triggerSenderFactory = func(jobID, diagramID string) data.TriggerSendFunc {
+		return func(ruleID string, files []string) {
+			go func() {
+				client := setup.GetWSClient()
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := client.Connect(ctx); err != nil {
+					if inst.logger != nil {
+						inst.logger.Error(err)
+					}
+					return
+				}
+				defer client.Close()
+				msg, err := models.NewTriggerOperationMsg(jobID, ruleID, files).ToWSMessage()
+				if err != nil {
+					inst.logger.Error(err)
+				}
+				_ = client.SendJSON(ctx, msg)
+			}()
+		}
+	}
 }
 
 func (inst *WidgetService) SetOnClosed(close func()) {
@@ -52,6 +79,9 @@ func (inst *WidgetService) CreateProjectUI(vp *viewproject.ViewProject, props *p
 		return fmt.Errorf("invalid view project: missing diagrams/setup")
 	}
 	inst.uiHolder = ui.NewProjectUIHolder(vp, inst.renderer, inst.drawerFactory, props, inst.variableContainer)
+	if inst.triggerSenderFactory != nil {
+		inst.uiHolder.SetTriggerSenderFactory(inst.triggerSenderFactory)
+	}
 	err := inst.uiHolder.Create()
 	if err != nil {
 		return err
@@ -64,6 +94,9 @@ func (inst *WidgetService) CreateDashboardProjectUI(dp *viewproject.DashboardPro
 		return fmt.Errorf("invalid dashboard project: the project is empty")
 	}
 	inst.dashboardHolder = ui.NewDashboardUIHolder(dp, inst.renderer, inst.drawerFactory, props, inst.jobRouter)
+	if inst.triggerSenderFactory != nil {
+		inst.dashboardHolder.SetTriggerSenderFactory(inst.triggerSenderFactory)
+	}
 	err := inst.dashboardHolder.Create(dp)
 	if err != nil {
 		return err

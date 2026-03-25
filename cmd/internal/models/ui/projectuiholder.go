@@ -7,6 +7,7 @@ import (
 
 	"github.com/gclkaze/evamon/cmd/internal/models"
 	window "github.com/gclkaze/evamon/cmd/internal/ui/chart"
+	"github.com/gclkaze/evamon/cmd/internal/ui/data"
 	draw "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 	"github.com/gclkaze/evamon/cmd/internal/viewproject"
@@ -31,6 +32,8 @@ type ProjectUIHolder struct {
 
 	vc *VariableContainer
 
+	triggerSenderFactory func(jobID, diagramID string) data.TriggerSendFunc
+
 	mu             sync.RWMutex
 	unsubscribe    map[string]map[draw.DiagramWidget]func()
 	MinChartWidth  float32
@@ -39,6 +42,10 @@ type ProjectUIHolder struct {
 
 func NewProjectUIHolder(vp *viewproject.ViewProject, renderer port.Renderer, drawerFactory draw.Factory, props *properties.Properties, vc *VariableContainer) *ProjectUIHolder {
 	return &ProjectUIHolder{vp: vp, renderer: renderer, props: props, drawerFactory: drawerFactory, vc: vc, unsubscribe: make(map[string]map[draw.DiagramWidget]func()), MinChartWidth: 300, MinChartHeight: 300}
+}
+
+func (inst *ProjectUIHolder) SetTriggerSenderFactory(fn func(jobID, diagramID string) data.TriggerSendFunc) {
+	inst.triggerSenderFactory = fn
 }
 
 func (inst *ProjectUIHolder) SetOnClosed(close func()) {
@@ -128,6 +135,12 @@ func (inst *ProjectUIHolder) setupAndBuildDiagramsMultiTabed(diagram models.Diag
 		w.Show()
 	}
 
+	if inst.triggerSenderFactory != nil && ref.Chart != nil {
+		if dw, ok := ref.Chart.(draw.DiagramWidget); ok {
+			dw.GetDataSeries().SetTriggerSender(inst.triggerSenderFactory(inst.vp.JobID, diagram.ID))
+		}
+	}
+
 	w.CommitTabs()
 	return w, nil
 }
@@ -154,6 +167,15 @@ func (inst *ProjectUIHolder) setupAndBuildDiagrams(diagram models.Diagram, windo
 
 		ws = append(ws, w)
 	}
+
+	if inst.triggerSenderFactory != nil {
+		if ref, ok := inst.renderer.ChartRegistry().Get(diagram.ID); ok && ref.Chart != nil {
+			if dw, ok := ref.Chart.(draw.DiagramWidget); ok {
+				dw.GetDataSeries().SetTriggerSender(inst.triggerSenderFactory(inst.vp.JobID, diagram.ID))
+			}
+		}
+	}
+
 	return ws, nil
 }
 

@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	dashboardbuilder "github.com/gclkaze/evamon/cmd/internal/ui/dashboard"
+	"github.com/gclkaze/evamon/cmd/internal/ui/data"
 	draw "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 	ui "github.com/gclkaze/evamon/cmd/internal/ui/factory"
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
@@ -24,7 +25,8 @@ type DashboardUIHolder struct {
 	defaultResizable bool
 	defaultMaxPoints int
 
-	jobRouter *JobRouter
+	jobRouter            *JobRouter
+	triggerSenderFactory func(jobID, diagramID string) data.TriggerSendFunc
 
 	mu          sync.RWMutex
 	unsubscribe map[string]map[draw.EvaWidget]func()
@@ -32,6 +34,10 @@ type DashboardUIHolder struct {
 
 func NewDashboardUIHolder(dp *viewproject.DashboardProject, renderer port.Renderer, drawerFactory draw.Factory, props *properties.Properties, jobRouter *JobRouter) *DashboardUIHolder {
 	return &DashboardUIHolder{dp: dp, renderer: renderer, props: props, drawerFactory: drawerFactory, jobRouter: jobRouter, unsubscribe: make(map[string]map[draw.EvaWidget]func())}
+}
+
+func (inst *DashboardUIHolder) SetTriggerSenderFactory(fn func(jobID, diagramID string) data.TriggerSendFunc) {
+	inst.triggerSenderFactory = fn
 }
 
 func (inst *DashboardUIHolder) SetOnClosed(close func()) {
@@ -58,8 +64,21 @@ func (inst *DashboardUIHolder) Create(dp *viewproject.DashboardProject) error {
 
 	// Bindings: subscribe to sockets
 	// for each incoming message (jobId, variable, at, value) -> route:
+	seen := make(map[string]struct{})
 	for _, b := range res.Bindings {
 		inst.jobRouter.Register(b.JobID, b.Variable, b.Sink)
+		if inst.triggerSenderFactory != nil && b.DiagramID != "" {
+			if _, already := seen[b.DiagramID]; !already {
+				seen[b.DiagramID] = struct{}{}
+				if dw, ok := b.Sink.(draw.DiagramWidget); ok {
+					ds := dw.GetDataSeries()
+					if ds != nil {
+						ds.SetTriggerSender(inst.triggerSenderFactory(b.JobID, b.DiagramID))
+
+					}
+				}
+			}
+		}
 	}
 
 	inst.window = win

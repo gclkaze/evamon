@@ -43,6 +43,12 @@ func (w *LineChartWidget) GetDataSeries() data.IMultiSeriesData {
 	return w.drawer.GetDataSeries()
 }
 
+func (w *LineChartWidget) SetTriggerSender(fn data.TriggerSendFunc) {
+	if ds := w.GetDataSeries(); ds != nil {
+		ds.SetTriggerSender(fn)
+	}
+}
+
 // MaximizeView returns a widget suitable as a maximize window's content.
 // See BarChartWidget.MaximizeView for the full explanation.
 // Call ClearMaximizeHook() when the maximize window closes.

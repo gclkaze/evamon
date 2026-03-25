@@ -90,6 +90,12 @@ func (w *BarChartWidget) GetDataSeries() data.IMultiSeriesData {
 	return w.drawer.GetDataSeries()
 }
 
+func (w *BarChartWidget) SetTriggerSender(fn data.TriggerSendFunc) {
+	if ds := w.GetDataSeries(); ds != nil {
+		ds.SetTriggerSender(fn)
+	}
+}
+
 func (w *BarChartWidget) Native() any { return w }
 
 func (w *BarChartWidget) CreateRenderer() fyne.WidgetRenderer {

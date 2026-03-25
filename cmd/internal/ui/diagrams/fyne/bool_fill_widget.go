@@ -55,6 +55,10 @@ func (w *BoolFillWidget) GetDataSeries() data.IMultiSeriesData {
 	return w.drawer.GetDataSeries()
 }
 
+func (w *BoolFillWidget) SetTriggerSender(fn data.TriggerSendFunc) {
+	// BoolFillDrawer has no MultiSeriesRing; trigger rules are not supported.
+}
+
 func (w *BoolFillWidget) Push(at time.Time, val any) {
 	w.drawer.Push(at, val)
 	w.lastFetch.update(at)

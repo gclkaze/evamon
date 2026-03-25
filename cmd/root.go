@@ -73,6 +73,7 @@ func NewRootCmd() *cobra.Command {
 		return nil
 	}
 	jobService.SetSetup(app)
+	widgetService.SetSetup(app)
 	viewService.SetSetup(app)
 
 	registryService, err := services.NewProjectsRegistry(app)
