@@ -66,7 +66,12 @@ func BuildDiagram(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w
 
 	fmt.Printf("Size of Registry is %d \n", renderer.ChartRegistry().Size())
 
-	bottom := l.VBox(toolbar, drawer.LastUpdatedLabel())
+	var bottom port.UIObject
+	if toolbar != nil {
+		bottom = l.VBox(toolbar, drawer.LastUpdatedLabel())
+	} else {
+		bottom = l.VBox(drawer.LastUpdatedLabel())
+	}
 	c := l.Border(legendObj, bottom, nil, nil, drawer)
 	w.SetContent(c)
 	w.SetResizable(true)
