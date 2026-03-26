@@ -54,6 +54,7 @@ func (inst *WidgetService) SetSetup(setup MainSetup) {
 					return
 				}
 				defer client.Close()
+				//	inst.logger.Info(msg string)
 				msg, err := models.NewTriggerOperationMsg(jobID, ruleID, files).ToWSMessage()
 				if err != nil {
 					inst.logger.Error(err)
