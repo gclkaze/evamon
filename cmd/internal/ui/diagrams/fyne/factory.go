@@ -8,6 +8,7 @@ import (
 	dia "github.com/gclkaze/evamon/cmd/internal/ui/port"
 )
 
+
 type Factory struct {
 	defaultTrue  color.Color
 	defaultFalse color.Color
@@ -20,7 +21,7 @@ func NewFactory() *Factory {
 	}
 }
 
-func (f *Factory) NewBoolFill(opts port.BoolFillOptions, title string, description string, width, height float32, varname string /*, owner *models.SetupItem*/) port.DiagramWidget {
+func (f *Factory) NewBoolFill(opts port.BoolFillOptions, title string, description string, width, height float32, varname string, owner dia.IDiagram) port.DiagramWidget {
 	trueC := opts.TrueColor
 	falseC := opts.FalseColor
 	if trueC == nil {
@@ -30,8 +31,9 @@ func (f *Factory) NewBoolFill(opts port.BoolFillOptions, title string, descripti
 		falseC = f.defaultFalse
 	}
 
+	ds := data.NewSingularSeriesData(owner, varname)
 	drawer := NewBoolFillDrawer(trueC, falseC, varname)
-	return NewBoolFillWidget(drawer, title, description, width, height) // tiny wrapper to satisfy DiagramWidget
+	return NewBoolFillWidget(ds, drawer, title, description, width, height)
 }
 
 func (f *Factory) NewBarChart(opts port.BarChartOptions, title string, description string, width, height float32, owner dia.IDiagram) port.DiagramWidget {

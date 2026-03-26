@@ -15,6 +15,7 @@ import (
 type BoolFillWidget struct {
 	widget.BaseWidget
 	drawer      *BoolFillDrawer
+	dataSeries  data.IMultiSeriesData
 	lastFetch   *lastUpdatedLabel
 	title       string
 	description string
@@ -23,8 +24,8 @@ type BoolFillWidget struct {
 	minHeight float32
 }
 
-func NewBoolFillWidget(drawer *BoolFillDrawer, title string, description string, width, height float32) *BoolFillWidget {
-	w := &BoolFillWidget{drawer: drawer, lastFetch: newLastUpdatedLabel(), title: title, description: description, minWidth: width, minHeight: height}
+func NewBoolFillWidget(ds data.IMultiSeriesData, drawer *BoolFillDrawer, title string, description string, width, height float32) *BoolFillWidget {
+	w := &BoolFillWidget{dataSeries: ds, drawer: drawer, lastFetch: newLastUpdatedLabel(), title: title, description: description, minWidth: width, minHeight: height}
 	w.ExtendBaseWidget(w)
 	return w
 }
@@ -52,16 +53,19 @@ func (w *BoolFillWidget) Refresh() {
 }
 
 func (w *BoolFillWidget) GetDataSeries() data.IMultiSeriesData {
-	return w.drawer.GetDataSeries()
-}
-
-func (w *BoolFillWidget) SetTriggerSender(fn data.TriggerSendFunc) {
-	// BoolFillDrawer has no MultiSeriesRing; trigger rules are not supported.
+	return w.dataSeries
 }
 
 func (w *BoolFillWidget) Push(at time.Time, val any) {
 	w.drawer.Push(at, val)
 	w.lastFetch.update(at)
+	if w.dataSeries != nil {
+		v := 0
+		if b, ok := val.(bool); ok && b {
+			v = 1
+		}
+		w.dataSeries.Append(at, []int{v})
+	}
 }
 
 func (w *BoolFillWidget) ZoomIn()  {}

@@ -15,7 +15,7 @@ import (
 func BuildDiagramContent(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, w port.ExecutionWindow, setup models.SetupItem, width, height float32, maxPoints int, t models.DiagramType, ref *port.DiagramUIRefs, d port.IDiagram) draw.DiagramWidget {
 	switch t {
 	case models.DiagramTypeBoolean:
-		boolFill := buildBooleanDiagram(holder, drawerFactory, setup, width, height)
+		boolFill := buildBooleanDiagram(holder, drawerFactory, setup, width, height, d)
 		ref.Chart = boolFill
 		return boolFill
 	case models.DiagramTypeBar:
@@ -171,8 +171,8 @@ func lookupColor(s string) color.Color {
 	return colornames.Gray
 }
 
-func buildBooleanDiagram(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, setup models.SetupItem, width, height float32) draw.DiagramWidget {
-	boolFill, err := CreateBoolDrawer(drawerFactory, &setup, -1, width, height)
+func buildBooleanDiagram(holder draw.VariableDrawerOwner, drawerFactory draw.Factory, setup models.SetupItem, width, height float32, owner port.IDiagram) draw.DiagramWidget {
+	boolFill, err := CreateBoolDrawer(drawerFactory, &setup, -1, width, height, owner)
 	if err != nil {
 		return nil
 	}
@@ -180,7 +180,7 @@ func buildBooleanDiagram(holder draw.VariableDrawerOwner, drawerFactory draw.Fac
 	return boolFill
 }
 
-func CreateBoolDrawer(drawerFactory draw.Factory, setup *models.SetupItem, index int, width, height float32) (draw.DiagramWidget, error) {
+func CreateBoolDrawer(drawerFactory draw.Factory, setup *models.SetupItem, index int, width, height float32, owner port.IDiagram) (draw.DiagramWidget, error) {
 	// Extract style if present
 	var trueColor, falseColor color.RGBA
 	if setup.DiagramStyle != nil {
@@ -202,7 +202,7 @@ func CreateBoolDrawer(drawerFactory draw.Factory, setup *models.SetupItem, index
 	w := drawerFactory.NewBoolFill(draw.BoolFillOptions{
 		TrueColor:  trueColor,
 		FalseColor: falseColor,
-	}, setup.Title, setup.Description, width, height, setup.Variable)
+	}, setup.Title, setup.Description, width, height, setup.Variable, owner)
 	return w, nil
 }
 

@@ -106,7 +106,7 @@ func DefaultLineChartOptions() LineChartOptions {
 }
 
 type Factory interface {
-	NewBoolFill(opts BoolFillOptions, title string, description string, width, height float32, varname string) DiagramWidget
+	NewBoolFill(opts BoolFillOptions, title string, description string, width, height float32, varname string, owner port.IDiagram) DiagramWidget
 	NewBarChart(opts BarChartOptions, title string, description string, width, height float32, owner port.IDiagram) DiagramWidget
 	NewLineChart(opts LineChartOptions, title string, description string, initialWidth, initialHeight, width, height float32, owner port.IDiagram) DiagramWidget
 }

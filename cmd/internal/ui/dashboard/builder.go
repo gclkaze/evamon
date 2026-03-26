@@ -336,7 +336,7 @@ func (b *Builder) buildBooleanDiagram(jobID string, d *models.Diagram, ref *port
 		if titleText != "" {
 			parts = append(parts, b.Layout.Title(titleText))
 		}
-		w, err := window.CreateBoolDrawer(b.Factory, &s, si, b.MinChartBooleanWidth, b.MinChartBooleanHeight)
+		w, err := window.CreateBoolDrawer(b.Factory, &s, si, b.MinChartBooleanWidth, b.MinChartBooleanHeight, d)
 		if err != nil {
 			return nil, nil, err
 		}
