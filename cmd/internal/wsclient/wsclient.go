@@ -126,6 +126,56 @@ func (c *Client) ReadJSON(ctx context.Context, out any) error {
 	}
 	return nil
 }
+func (c *Client) SendText(ctx context.Context, text string) error {
+	if c.conn == nil {
+		err := ErrNotConnected()
+		if c.logger != nil {
+			c.logger.Error(err)
+		}
+		return err
+	}
+
+	if c.logger != nil {
+		c.logger.VerboseInfo("[ws] -> " + text)
+	}
+
+	writeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	err := c.conn.Write(writeCtx, websocket.MessageText, []byte(text))
+	if err != nil && c.logger != nil {
+		c.logger.Error(err)
+	}
+	return err
+}
+
+// ReadText reads a single text frame from the connection using the provided
+// context's deadline only — no internal timeout is added, which allows it
+// to block waiting for stream messages of unknown duration.
+func (c *Client) ReadText(ctx context.Context) (string, error) {
+	if c.conn == nil {
+		err := ErrNotConnected()
+		if c.logger != nil {
+			c.logger.Error(err)
+		}
+		return "", err
+	}
+
+	_, b, err := c.conn.Read(ctx)
+	if err != nil {
+		if c.logger != nil {
+			c.logger.Error(err)
+		}
+		return "", err
+	}
+
+	text := string(b)
+	if c.logger != nil {
+		c.logger.VerboseInfo("[ws] <- " + text)
+	}
+	return text, nil
+}
+
 func (c *Client) ReadJSONForever(ctx context.Context, out any) error {
 	if c.conn == nil {
 		err := ErrNotConnected()

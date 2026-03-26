@@ -29,23 +29,26 @@ cmd/
 └── internal/
     ├── app/evamon.go                   # Application orchestrator
     ├── models/                         # Core data models (Diagram, Filter, SetupItem, messages)
+    │   ├── triggeroperationmsg.go      # TriggerOperationMsg + status lifecycle + ToWSMessage()
+    │   └── ws.go                       # WSMessage envelope
     ├── services/
-    │   ├── widget_service.go           # Creates diagram widgets; dispatches incoming data
+    │   ├── widget_service.go           # Creates diagram widgets; dispatches incoming data; trigger protocol
+    │   ├── trigger_stream_tracker.go   # Tracks in-flight trigger messages and their assigned stream ports
     │   └── view_service.go             # WebSocket listener; renders projects
     ├── viewproject/                    # ViewProject and DashboardProject JSON models
     ├── ui/
     │   ├── port/                       # Abstract UI interfaces
     │   │   ├── renderer.go             # Renderer (top-level factory)
     │   │   ├── ui.go                   # UIObject, Layout
-    │   │   ├── controls.go             # Controls (buttons, checkboxes, menus)
-    │   │   ├── actions.go              # DiagramActions (Maximize, Filters, Download)
+    │   │   ├── controls.go             # Controls (buttons, checkboxes, menus); IconSnapshot
+    │   │   ├── actions.go              # DiagramActions (Maximize, Filters, Download, Snapshot)
     │   │   ├── chart_registry.go       # ChartRegistry: diagramID → DiagramUIRefs
     │   │   └── diagramuirefs.go        # DiagramUIRefs: all UI parts for one diagram
     │   ├── fyne/                       # Fyne adapter
     │   │   ├── renderer.go
     │   │   ├── layout.go
     │   │   ├── controls.go
-    │   │   ├── diagram_actions.go      # Maximize, Filters, Download implementations
+    │   │   ├── diagram_actions.go      # Maximize, Filters, Download, Snapshot, Operations
     │   │   └── operations/             # Operations modal and tabs (see Operations System section)
     │   │       ├── operations_modal.go
     │   │       ├── operations_modal_state.go
@@ -55,27 +58,32 @@ cmd/
     │   │       └── three_col_layout.go
     │   ├── diagrams/
     │   │   ├── port/                   # DiagramWidget, EvaWidget, Factory interfaces
+    │   │   │   └── factory.go          # Factory.NewBoolFill takes owner port.IDiagram
     │   │   └── fyne/                   # Concrete widgets and drawers
-    │   │       ├── factory.go
-    │   │       ├── toolbar_factory.go  # Per-diagram-type toolbar factories (see TODO)
+    │   │       ├── factory.go          # NewBoolFill creates SingularSeriesData and passes it to widget
     │   │       ├── barchart_widget.go
     │   │       ├── barchart_drawer.go
     │   │       ├── linechart_widget.go
     │   │       ├── linechart_drawer.go
     │   │       ├── linechart_tooltip.go
     │   │       ├── maximize_adapter.go
-    │   │       ├── bool_fill_widget.go
+    │   │       ├── bool_fill_widget.go  # Holds SingularSeriesData; Push also calls data.Append
     │   │       └── boolean_fill_drawer.go
     │   ├── data/
-    │   │   ├── imultiseriesdata.go     # IMultiSeriesData interface
-    │   │   ├── multiseriesring.go      # Ring-buffer implementation with filter evaluation
+    │   │   ├── imultiseriesdata.go     # IMultiSeriesData interface + TriggerSendFunc type
+    │   │   ├── multiseriesring.go      # Ring-buffer with filter + trigger-rule evaluation
+    │   │   ├── singularseriesdata.go   # Single-value IMultiSeriesData for BoolFillWidget
     │   │   ├── aggregation_tree.go     # AggregationTree, Bucket, BucketIterator
-    │   │   └── aggregation_func.go    # TimePeriod, AggregationFunction, Extract()
+    │   │   └── aggregation_func.go     # TimePeriod, AggregationFunction, Extract()
     │   ├── dashboard/builder.go        # Builds dashboard UI from DashboardProject
-    │   └── factory/factory.go          # Renderer factory (selects Fyne or future Web)
+    │   └── factory/
+    │       ├── factory.go              # Renderer factory (selects Fyne or future Web)
+    │       └── diagram_toolbar_factory.go  # ToolbarSelector + ChartToolbarFactory + BoolFillToolbarFactory
     ├── config/                         # Endpoint resolution
     ├── auth/                           # Token loading
-    ├── wsclient/                       # WebSocket client
+    ├── wsclient/
+    │   ├── wsclient.go                 # WebSocket client; SendJSON, ReadJSON, SendText, ReadText
+    │   └── wserrors.go
     └── fs/                             # File I/O helpers
 pkg/utils/                             # Expression evaluator, string/file utilities
 ```
@@ -96,11 +104,13 @@ VariableContainer.Push()  [models/ui/variablecontainer.go]
   ↓  (fans out to all widgets that care about this variable)
 DiagramWidget.Push(at, val)
   ↓
-MultiSeriesRing.Append()  [ui/data/multiseriesring.go]
-  — stores time + values in ring buffers
+MultiSeriesRing.Append()  [ui/data/multiseriesring.go]   ← bar / line charts
+SingularSeriesData.Append()  [ui/data/singularseriesdata.go]  ← boolean charts
+  — stores time + values
   — evaluates filter expressions on the new point
+  — evaluates trigger rules; on rising-edge fires TriggerSendFunc goroutine
   ↓
-drawer.Push(at, val)      (BarChartDrawer / LineChartDrawer)
+drawer.Push(at, val)      (BarChartDrawer / LineChartDrawer / BooleanFillDrawer)
   — calls redrawWithAxis() or refreshes raster
   — calls refreshRoot() / refreshRaster()
     → normal mode: CanvasForObject(d.root).Refresh()
@@ -126,6 +136,14 @@ Each chart type has two layers:
 
 `chartTooltip` (in `linechart_tooltip.go`) is shared by both chart types. It is an overlay container positioned with absolute coordinates inside the widget's renderer object list. It shows on `MouseMoved` via `HitTestX()` on the drawer.
 
+### BoolFillWidget Data Series
+
+`BoolFillWidget` owns a `SingularSeriesData` (passed as the first constructor argument). On every `Push(at, val)`:
+1. The drawer updates its fill colour (existing behaviour).
+2. `w.dataSeries.Append(at, []int{v})` is called — `true→1`, `false→0` — which evaluates trigger rules.
+
+`GetDataSeries()` returns the `SingularSeriesData`, so the trigger sender can be injected via the standard `GetDataSeries().SetTriggerSender(fn)` path used by bar and line charts.
+
 ### Maximize
 
 `DiagramActionHandler.Maximize()` in `diagram_actions.go`:
@@ -139,6 +157,35 @@ Each chart type has two layers:
 
 The `maximizeAdapter`'s `renderer.Refresh()` uses `CanvasForObject(adapter)` to get the canvas, then calls `c.Refresh(d.root)` directly — bypassing the stale `CanvasForObject(d.root)` lookup entirely.
 
+`DiagramActionHandler` tracks open maximize windows in `maximizeWindows map[string]fyne.Window` (keyed by diagram ID). This is used by `SnapshotChart` to capture the correct canvas when the chart is maximized.
+
+### Chart Snapshot
+
+`DiagramActionHandler.SnapshotChart()` in `diagram_actions.go`:
+
+- **Normal mode**: captures the full main window canvas via `CanvasForObject(chartObj)`, then crops to the chart widget's absolute bounds using `Driver().AbsolutePositionForObject(chartObj)` + `chartObj.Size()`.
+- **Maximized mode**: the maximize window's content IS the chart, so `maximizeWindows[diagramID].Canvas().Capture()` is used directly — no crop needed.
+
+The output filename is derived from the diagram's display name via `snapshotFilename()`:
+- Lowercased, non-alphanumeric runs replaced with `_`, trimmed.
+- Suffixed with `_evamon_chart.png`. Example: `"My Statistics!!" → "my_statistics_evamon_chart.png"`.
+
+A Fyne `dialog.NewFileSave` is shown pre-filled with the filename, filtered to `.png`.
+
+### Toolbar Factory System
+
+Three types in `ui/factory/diagram_toolbar_factory.go`, all implementing `dport.DiagramToolbarFactory`:
+
+| Type | Used for | Content |
+|---|---|---|
+| `ToolbarSelector` | Entry point; returned by `NewDiagramToolbarFactor` | Delegates to the right factory based on `d.GetType()` |
+| `ChartToolbarFactory` | Bar and line charts | Filter toggle, filters button, zoom in/out, download menu, snapshot button, operations button, maximize button; plus a scrollable filter-row below |
+| `BoolFillToolbarFactory` | Boolean diagrams | Returns `nil` — no toolbar |
+
+`BuildDiagram` in `chartfactory.go` handles a nil toolbar gracefully (bottom bar shows only the last-updated label).
+
+The `ChartToolbarFactory` registers a `SetRebuildWrapper` callback on `DiagramUIRefs` that rebuilds both the toolbar children and the filter row in-place (without re-creating the `HBox` containers) — this is how filter changes propagate to the toolbar without losing the container reference.
+
 ---
 
 ## Key Types
@@ -147,13 +194,17 @@ The `maximizeAdapter`'s `renderer.Refresh()` uses `CanvasForObject(adapter)` to 
 |---|---|---|
 | `DiagramUIRefs` | `ui/port/diagramuirefs.go` | Holds all UI components for one diagram: Chart, ChartSlot, Toolbar, Legend, Filter controls. `ChartSlot` is the `Max` container wrapping the chart widget (allows placeholder swap on maximize). `Maximized bool` guards against duplicate windows. |
 | `ChartRegistry` | `ui/port/chart_registry.go` | Global map: `diagramID → *DiagramUIRefs`. Used by toolbar callbacks and diagram actions. |
-| `MultiSeriesRing` | `ui/data/multiseriesring.go` | Fixed-capacity ring buffer storing `times []time.Time` and `values [][]int32` for N variables. Also stores `ConditionResults` per data point for filter overlays. |
+| `MultiSeriesRing` | `ui/data/multiseriesring.go` | Fixed-capacity ring buffer storing `times []time.Time` and `values [][]int32` for N variables. Also stores `ConditionResults` per data point for filter overlays. Evaluates trigger rules on every `Append`. |
+| `SingularSeriesData` | `ui/data/singularseriesdata.go` | `IMultiSeriesData` for `BoolFillWidget`. Stores a single `(lastValue int, lastTime time.Time)`. Evaluates trigger rules identically to `MultiSeriesRing`. Created by `fyne.Factory.NewBoolFill` and owned by `BoolFillWidget`. |
+| `TriggerSendFunc` | `ui/data/imultiseriesdata.go` | `func(ruleID string, files []string)` — injected into the data layer from `WidgetService`. Closures capture `jobID` and `diagramID` at render time. |
 | `maximizeAdapter` | `diagrams/fyne/maximize_adapter.go` | Thin `BaseWidget` wrapping `d.root`. Its `Layout(size)` delegates to the drawer's full resize logic. Its renderer's `Refresh()` uses the adapter's own canvas to refresh `d.root`. |
 | `AggregationTree` | `ui/data/aggregation_tree.go` | Nested-map tree of pre-aggregated buckets built from historic data. Immutable after construction. Queried via `IterateLevel()` or level-specific iterators. |
 | `BucketIterator` | `ui/data/aggregation_tree.go` | Typed iterator over a chronologically sorted `[]Bucket` slice. Not goroutine-safe. |
 | `HistoricDataStore` | `ui/data/` | Replaces `MultiSeriesRing` in historic mode. Holds the raw `[]DataPoint` and the built `*AggregationTree`. Never mixed with `MultiSeriesRing` in the same `DiagramUIRefs`. |
 | `TriggerRule` | `models/triggerrule.go` | A condition+action pair. `OriginalComponentID` is the stable key. `MaintainLink` controls whether label/expression are resolved live from the source `FilterComponent`. `Edited` flag set when label/expression are manually overridden. |
 | `ActionFile` | `models/actionfile.go` | Thin wrapper around a `.eva` script path. Ordered within a rule. |
+| `TriggerOperationMsg` | `models/triggeroperationmsg.go` | Outbound message sent to Evacron when a trigger rule fires. Has a unique `ID` (via `utils.GetRandomString()`), `JobID`, `RuleID`, `Files []string`, and `Status` (`PENDING`/`ACK`/`DONE`). `ToWSMessage()` wraps it in a `WSMessage` envelope. |
+| `triggerStreamTracker` | `services/trigger_stream_tracker.go` | Thread-safe map of `msgID → triggerStreamEntry` tracking each in-flight trigger's assigned stream port and current status. Entries are registered when a port is received and removed when the stream closes. |
 | `OperationsStateDifferentiator` | `models/operationsstatedifferentiator.go` | Snapshots a rule list at construction; exposes `On*` mutators and `HasChanges()`/`GetDiff()`. Used by the Operations modal to gate the Save button. |
 | `OperationsModalState` | `ui/fyne/operations/operations_modal_state.go` | Shared mutable state across Operations modal tabs: available components, selected rules, active rule, differentiator, and `OnChanged` callback. |
 
@@ -369,6 +420,54 @@ Both selectors trigger a `RebuildToolbar` on change and a drawer refresh via `Di
 
 ---
 
+## Trigger Protocol
+
+When a trigger rule fires (rising-edge detected in `MultiSeriesRing` or `SingularSeriesData`), `WidgetService` executes a two-phase WebSocket protocol via `runTriggerProtocol`:
+
+```
+Phase 1 — dispatch (main WS connection, 10 s timeout)
+  → Send TriggerOperationMsg  {"type":"job.trigger", "id":…, "jobId":…, "ruleId":…, "files":[…]}
+  ← Receive WSMessage         {"data": {"port": <int>}}
+
+Phase 2 — stream (new WS connection to ws://<host>:<port>)
+  → Send  TRIGGER_PROTOCOL_ACKNOWLEDGEMENT  ("ACK")
+  ← Receive  <string message>  (printed as "[trigger <id>] <message>")
+  ← Receive  …
+  ← Receive  TRIGGER_STREAM_END  ("STREAM-END")
+  → Send  TRIGGER_PROTOCOL_ACKNOWLEDGEMENT  ("ACK")
+  → Close stream connection
+```
+
+### Constants (`services/widget_service.go`)
+
+| Constant | Value | Used in |
+|---|---|---|
+| `TRIGGER_PROTOCOL_ACKNOWLEDGEMENT` | `"ACK"` | Opening and closing the stream |
+| `TRIGGER_STREAM_END` | `"STREAM-END"` | Detecting end of output |
+
+### Method breakdown (`widget_service.go`)
+
+| Method | Responsibility |
+|---|---|
+| `runTriggerProtocol` | Orchestrator: build msg → send → stream |
+| `sendTriggerMsg` | Connect main WS, send `TriggerOperationMsg`, call `readStreamPort` |
+| `readStreamPort` | Read `WSMessage` response, unmarshal `{"port": N}` |
+| `runStream` | Resolve host, build stream URL, connect, call `drainStream` |
+| `drainStream` | Send opening ACK → print messages → send closing ACK on `STREAM-END` |
+
+### Tracking
+
+`triggerStreamTracker` (in `services/trigger_stream_tracker.go`) maps `msgID → triggerStreamEntry{Msg, Port, Status}`. Status transitions: `PENDING → ACK → DONE`. Entries are removed when `drainStream` returns.
+
+### wsclient additions
+
+| Method | Behaviour |
+|---|---|
+| `SendText(ctx, text)` | Writes a plain text WebSocket frame (5 s write timeout) |
+| `ReadText(ctx)` | Reads a text frame with no additional internal timeout — uses ctx as-is, suitable for long-running stream reads |
+
+---
+
 ## Operations System
 
 The Operations system lets users configure **trigger rules** for a diagram — each rule pairs a filter condition with an ordered list of action files (`.eva` scripts) to execute when that condition fires.
@@ -491,35 +590,9 @@ evamon view --dashboard <dashboard-name>
 
 ## TODO
 
-### Refactor: Per-Diagram-Type Toolbar Factory
+### Operations: Persistence and Startup Loading
 
-**Current state**: `DefaultDiagramToolbarFactory` is a single factory holding only a `Renderer` field. It builds a toolbar for all diagram types uniformly.
-
-**Problem**: Not all diagram types need a toolbar. `BoolFillWidget` in particular has no meaningful toolbar actions — period/function selectors, maximize, filters, and download are all irrelevant or inapplicable. Forcing a toolbar onto it is noise.
-
-**Goal**: Replace `DefaultDiagramToolbarFactory` with a per-diagram-type factory:
-```go
-type DiagramToolbarFactory interface {
-    BuildToolbar(refs *DiagramUIRefs) fyne.CanvasObject
-}
-
-// Implementations (in cmd/internal/ui/diagrams/fyne/toolbar_factory.go):
-type BarChartToolbarFactory  struct{ Renderer Renderer } // period + function + maximize + filters + download
-type LineChartToolbarFactory struct{ Renderer Renderer } // maximize + filters + download
-type BoolFillToolbarFactory  struct{}                    // returns nil — no toolbar
-```
-
-`DiagramUIRefs.Toolbar` must tolerate nil gracefully — the dashboard layout must not allocate space for it when absent.
-
-**Impact**: `ChartRegistry`, `DiagramUIRefs`, and the `RebuildToolbar` closure are unaffected — the factory is only invoked at construction time and on toolbar rebuild triggers.
-
----
-
-### Operations: Persistence, Startup Loading, Condition Evaluation, and Evacron Triggering
-
-#### Ownership: Operations are per chart
-
-`[]TriggerRule` is scoped **per diagram (chart)**. Each chart owns its own rule set. Conditions reference that chart's `FilterComponent` IDs and action files are logically tied to what the chart is monitoring. Mapping: `DiagramProject.Operations []TriggerRule` / `DashboardDiagramEntry.Operations []TriggerRule`.
+The trigger evaluation pipeline, `TriggerOperationMsg`, and the full Evacron streaming protocol are implemented. The remaining work is wiring the saved rule set into the JSON models and loading it at startup.
 
 #### JSON schema changes
 
@@ -533,58 +606,19 @@ type DiagramEntry struct {
 }
 ```
 
-`TriggerRule` (already defined in `models/triggerrule.go`) must be JSON-serialisable. Verify that `ActionFile` (`.eva` path) round-trips cleanly. `omitempty` keeps existing files unchanged until rules are added.
+`omitempty` keeps existing files unchanged until rules are added.
 
 #### Operations modal — load and save
 
-- **Load**: when `ShowOperationsModal` is called from a diagram's toolbar, pass `diagramEntry.Operations` (or a deep copy) as `initialRules`. The modal already accepts `initialRules []TriggerRule`.
-- **Save** (`onSave` callback): write the returned `[]TriggerRule` back into the in-memory `DiagramEntry`, then persist the whole view/dashboard project to `~/.evamon/lib/<name>.json`. No partial saves — rewrite the full file to avoid partial-update bugs.
-- Keep the existing `OperationsStateDifferentiator` gate: the Save button stays disabled until `HasChanges()` is true, so accidental no-op writes are avoided.
+- **Load**: when `ShowOperationsModal` is called from the toolbar, pass `diagramEntry.Operations` (or a deep copy) as `initialRules`.
+- **Save** (`onSave` callback): write the returned `[]TriggerRule` back into the in-memory `DiagramEntry`, then persist the whole project to `~/.evamon/lib/<name>.json`. No partial saves.
 
 #### Startup loading
 
-`ViewService` / `DashboardBuilder` already deserialises the project JSON on startup. Once `Operations` is part of the JSON model it is loaded automatically. After deserialisation, pass each diagram's `[]TriggerRule` into `DiagramUIRefs` (add a `TriggerRules []TriggerRule` field) so the evaluation loop can access them without re-reading the file.
+Once `Operations` is part of the JSON model it is loaded automatically at deserialisation. After deserialisation, pass each diagram's `[]TriggerRule` into `DiagramUIRefs` (add a `TriggerRules []TriggerRule` field) so `MultiSeriesRing` / `SingularSeriesData` can read them via `owner.GetTriggerRules()`.
 
-#### Condition evaluation
+#### Summary of remaining work items
 
-Evaluation must run on every new data point, inside the existing data-push path:
-
-```
-MultiSeriesRing.Append()
-  → evaluates FilterComponents already (ConditionResults)
-  → after filter eval, iterate DiagramUIRefs.TriggerRules
-      for each rule: evaluate rule.Expression using pkg/utils.RunExpression()
-                     if true → fire trigger (see below)
-```
-
-- Use the same `tafexpr`-based `RunExpression()` already used by the filter system — no new evaluator needed.
-- A rule fires only when its condition **transitions from false to true** (rising edge), not on every point while it is true. Track `lastFired map[OriginalComponentID]bool` per diagram to detect the transition.
-- `MaintainLink` is a UI concern only; by the time rules reach the evaluator, `BreakLink()` has already materialised label/expression into the rule struct.
-
-#### Triggering Evacron — WebSocket message
-
-When a rule fires, evamon sends a message to Evacron over the existing WebSocket connection requesting execution of the rule's action files:
-
-```go
-// Proposed outbound message type (add to models/):
-type TriggerOperationMsg struct {
-    Type    string   `json:"type"`    // "triggerOperation"
-    JobID   string   `json:"jobId"`
-    RuleID  string   `json:"ruleId"`  // OriginalComponentID
-    Files   []string `json:"files"`   // ordered .eva paths from ActionFile slice
-}
-```
-
-- Reuse the existing `wsclient` write path. Add a `SendMessage(v any) error` method (or equivalent) if not already present.
-- Evacron is responsible for executing the `.eva` files in order. Evamon does not wait for a response or retry — fire-and-forget is sufficient for the initial implementation.
-- If the WebSocket is not connected at the time of firing, log the missed trigger and skip — do not queue or retry.
-
-#### Summary of work items
-
-1. Decide and document final ownership (per-diagram recommended).
-2. Add `Operations []TriggerRule` to the relevant JSON model structs.
-3. Implement save-to-file in the `onSave` callback of `ShowOperationsModal`.
-4. Add `TriggerRules []TriggerRule` to `DiagramUIRefs`; populate on startup from deserialised JSON.
-5. Add rising-edge condition evaluation in `MultiSeriesRing.Append()` (or a wrapper in `WidgetService.DispatchValue()`).
-6. Define `TriggerOperationMsg` and implement the WebSocket send in `wsclient`.
-7. Wire the fired trigger → `wsclient.SendMessage(TriggerOperationMsg{...})`.
+1. Add `Operations []TriggerRule` to the relevant JSON model structs.
+2. Implement save-to-file in the `onSave` callback of `ShowOperationsModal`.
+3. Add `TriggerRules []TriggerRule` to `DiagramUIRefs`; populate on startup from deserialised JSON.

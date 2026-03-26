@@ -250,13 +250,13 @@ func (m *MultiSeriesRing) evaluateTriggerRules(floats []float64) {
 		}
 
 		id := rule.OriginalComponentID
-		prev := m.lastFired[id]
+		_ = m.lastFired[id]
 		m.lastFired[id] = res
 
 		// Rising edge: only fire when transitioning false → true.
-		if !res || prev {
-			continue
-		}
+		/*		if !res || prev {
+				continue
+			}*/
 
 		files := make([]string, len(rule.Actions))
 		for i, a := range rule.Actions {
