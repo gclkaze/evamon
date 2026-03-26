@@ -9,6 +9,7 @@ const (
 	IconZoomIn     ToolbarIcon = "zoom_in"
 	IconZoomOut    ToolbarIcon = "zoom_out"
 	IconOperations ToolbarIcon = "operations"
+	IconSnapshot   ToolbarIcon = "snapshot"
 )
 
 type MenuItem struct {

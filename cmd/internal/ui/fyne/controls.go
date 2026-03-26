@@ -26,6 +26,8 @@ func (Controls) IconButton(icon uport.ToolbarIcon, onClick func()) uport.UIObjec
 		res = theme.ZoomOutIcon()
 	case uport.IconOperations:
 		res = theme.SettingsIcon()
+	case uport.IconSnapshot:
+		res = theme.MediaPhotoIcon()
 	default:
 		res = theme.QuestionIcon()
 	}

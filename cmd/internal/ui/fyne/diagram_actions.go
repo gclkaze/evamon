@@ -2,18 +2,23 @@ package fynerenderer
 
 import (
 	"fmt"
+	"image"
+	"image/draw"
+	"image/png"
 	"log"
+	"regexp"
 	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
 	"github.com/gclkaze/evamon/cmd/internal/models"
 	diaw "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 	"github.com/gclkaze/evamon/cmd/internal/ui/fyne/operations"
 
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
-	dia "github.com/gclkaze/evamon/cmd/internal/ui/port"
 	vp "github.com/gclkaze/evamon/cmd/internal/viewproject"
 	"github.com/gclkaze/evamon/pkg/utils"
 )
@@ -24,10 +29,14 @@ type DiagramActionHandler struct {
 	// ExportService
 	// Filter validator / parser
 	// Project saver
-	ChartRegistry *dia.ChartRegistry
+	ChartRegistry *port.ChartRegistry
 
 	snapshotComponents []models.FilterComponent
 	snaphshotMode      models.FilterMode
+
+	// maximizeWindows tracks the open maximize window for each diagram ID so
+	// that SnapshotChart can capture from the correct canvas when maximized.
+	maximizeWindows map[string]fyne.Window
 }
 
 // maximizeViewProvider is implemented by BarChartWidget and LineChartWidget.
@@ -82,12 +91,17 @@ func (h *DiagramActionHandler) Maximize(jobID string, d port.IDiagram) {
 	win.SetContent(view)
 
 	refs.Maximized = true
+	if h.maximizeWindows == nil {
+		h.maximizeWindows = make(map[string]fyne.Window)
+	}
+	h.maximizeWindows[d.GetID()] = win
 
 	win.SetOnClosed(func() {
 		provider.ClearMaximizeHook()
 		slotContainer.RemoveAll()
 		slotContainer.Add(chartObj)
 		refs.Maximized = false
+		delete(h.maximizeWindows, d.GetID())
 	})
 
 	win.Show()
@@ -168,7 +182,7 @@ func (h *DiagramActionHandler) Filters(jobID string, d port.IDiagram) {
 		func(expr string) error {
 			return h.validateExpression(expr, d)
 		},
-		func(f *models.Filter, d dia.IDiagram) error {
+		func(f *models.Filter, d port.IDiagram) error {
 			if err := h.saveFilters(jobID, setupItem, f, d); err != nil {
 				return err
 			}
@@ -283,6 +297,92 @@ func (h *DiagramActionHandler) SetFilterComponentEnabled(jobID string, d port.ID
 	case *vp.DashboardProject:
 		p.Save()
 	}
+}
+
+func (h *DiagramActionHandler) SnapshotChart(_ string, d port.IDiagram) {
+	refs, ok := h.ChartRegistry.Get(d.GetID())
+	if !ok || refs.Chart == nil {
+		return
+	}
+
+	var img image.Image
+
+	if refs.Maximized {
+		// The maximize window's content IS the chart — capture the whole canvas.
+		maxWin, tracked := h.maximizeWindows[d.GetID()]
+		if !tracked {
+			return
+		}
+		img = maxWin.Canvas().Capture()
+	} else {
+		chartObj, ok := refs.Chart.Native().(fyne.CanvasObject)
+		if !ok {
+			return
+		}
+		drv := fyne.CurrentApp().Driver()
+		c := drv.CanvasForObject(chartObj)
+		if c == nil {
+			return
+		}
+		full := c.Capture()
+
+		// Crop to just the chart widget's area on the canvas.
+		absPos := drv.AbsolutePositionForObject(chartObj)
+		size := chartObj.Size()
+		x0 := int(absPos.X)
+		y0 := int(absPos.Y)
+		x1 := x0 + int(size.Width)
+		y1 := y0 + int(size.Height)
+
+		b := full.Bounds()
+		if x0 < b.Min.X {
+			x0 = b.Min.X
+		}
+		if y0 < b.Min.Y {
+			y0 = b.Min.Y
+		}
+		if x1 > b.Max.X {
+			x1 = b.Max.X
+		}
+		if y1 > b.Max.Y {
+			y1 = b.Max.Y
+		}
+
+		cropped := image.NewRGBA(image.Rect(0, 0, x1-x0, y1-y0))
+		draw.Draw(cropped, cropped.Bounds(), full, image.Point{X: x0, Y: y0}, draw.Src)
+		img = cropped
+	}
+
+	windows := fyne.CurrentApp().Driver().AllWindows()
+	if len(windows) == 0 {
+		return
+	}
+
+	dlg := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) {
+		if err != nil || w == nil {
+			return
+		}
+		defer w.Close()
+		if err := png.Encode(w, img); err != nil {
+			NewErrorAlert(err.Error()).Show()
+		}
+	}, windows[0])
+	dlg.SetFileName(snapshotFilename(d.GetName()))
+	dlg.SetFilter(storage.NewExtensionFileFilter([]string{".png"}))
+	dlg.Show()
+}
+
+// snapshotFilename converts a diagram display name into a safe PNG filename.
+// e.g. "My Statistics!!" → "my_statistics_evamon_chart.png"
+var nonAlphanumRe = regexp.MustCompile(`[^a-z0-9]+`)
+
+func snapshotFilename(name string) string {
+	slug := nonAlphanumRe.ReplaceAllString(strings.ToLower(name), "_")
+	slug = strings.Trim(slug, "_")
+	if slug == "" {
+		slug = "chart"
+	}
+	return slug + "_evamon_chart.png"
 }
 
 func (h *DiagramActionHandler) saveFilters(jobID string, setupItem *models.SetupItem, filter *models.Filter, d port.IDiagram) error {

@@ -96,6 +96,10 @@ func (f *ChartToolbarFactory) buildChildren(jobID string, d port.IDiagram) []por
 		theRef.RegisterDownloadButton(downloadBtn)
 	}
 
+	snapshotBtn := f.renderer.Controls().IconButton(port.IconSnapshot, func() {
+		f.renderer.Actions().SnapshotChart(jobID, d)
+	})
+
 	maximizeBtn := f.renderer.Controls().IconButton(port.IconMaximize, func() {
 		f.renderer.Actions().Maximize(jobID, d)
 	})
@@ -123,7 +127,7 @@ func (f *ChartToolbarFactory) buildChildren(jobID string, d port.IDiagram) []por
 	if zoomInBtn != nil {
 		children = append(children, zoomInBtn, zoomOutBtn)
 	}
-	children = append(children, downloadBtn, operationsBtn, maximizeBtn)
+	children = append(children, downloadBtn, snapshotBtn, operationsBtn, maximizeBtn)
 
 	return children
 }
