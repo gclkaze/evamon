@@ -53,7 +53,7 @@ func (inst *WidgetService) SetSetup(setup MainSetup) {
 
 	inst.triggerSenderFactory = func(jobID, diagramID string) data.TriggerSendFunc {
 		return func(ruleID string, files []string) {
-			go inst.runTriggerProtocol(jobID, ruleID, files)
+			go inst.runTriggerProtocol(jobID, ruleID, diagramID, files)
 		}
 	}
 }
@@ -64,8 +64,8 @@ const (
 )
 
 // runTriggerProtocol orchestrates the full trigger-operation protocol.
-func (inst *WidgetService) runTriggerProtocol(jobID, ruleID string, files []string) {
-	msg := models.NewTriggerOperationMsg(jobID, ruleID, files)
+func (inst *WidgetService) runTriggerProtocol(jobID, ruleID, diagramID string, files []string) {
+	msg := models.NewTriggerOperationMsg(jobID, ruleID, diagramID, files)
 	wsMsg, err := msg.ToWSMessage()
 	if err != nil {
 		inst.logErr(err)

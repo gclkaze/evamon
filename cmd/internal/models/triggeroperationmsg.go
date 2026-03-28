@@ -16,12 +16,13 @@ const (
 
 // Existing TriggerOperationMsg struct
 type TriggerOperationMsg struct {
-	ID     string                 `json:"id"`
-	Type   string                 `json:"type"`
-	JobID  string                 `json:"jobId"`
-	RuleID string                 `json:"ruleId"`
-	Files  []string               `json:"files"`
-	Status TriggerOperationStatus `json:"status"`
+	ID        string                 `json:"id"`
+	Type      string                 `json:"type"`
+	JobID     string                 `json:"jobId"`
+	RuleID    string                 `json:"ruleId"`
+	Files     []string               `json:"files"`
+	Status    TriggerOperationStatus `json:"status"`
+	DiagramID string                 `json:"diagramID"`
 }
 
 // New method to convert TriggerOperationMsg to WSMessage
@@ -40,13 +41,14 @@ func (m *TriggerOperationMsg) ToWSMessage() (*WSMessage, error) {
 }
 
 // Example usage of NewTriggerOperationMsg
-func NewTriggerOperationMsg(jobID, ruleID string, files []string) *TriggerOperationMsg {
+func NewTriggerOperationMsg(jobID, ruleID, diagramID string, files []string) *TriggerOperationMsg {
 	return &TriggerOperationMsg{
-		ID:     utils.GetRandomString(),
-		Type:   "job.trigger",
-		JobID:  jobID,
-		RuleID: ruleID,
-		Files:  files,
-		Status: TriggerOperationStatusPending,
+		ID:        utils.GetRandomString(),
+		Type:      "job.trigger",
+		JobID:     jobID,
+		RuleID:    ruleID,
+		Files:     files,
+		DiagramID: diagramID,
+		Status:    TriggerOperationStatusPending,
 	}
 }
