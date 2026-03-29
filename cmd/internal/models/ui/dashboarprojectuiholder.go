@@ -27,6 +27,7 @@ type DashboardUIHolder struct {
 
 	jobRouter            *JobRouter
 	triggerSenderFactory func(jobID, diagramID string) data.TriggerSendFunc
+	logPanel             port.UIObject // optional; when set a VSplit is added below the dashboard
 
 	mu          sync.RWMutex
 	unsubscribe map[string]map[draw.EvaWidget]func()
@@ -38,6 +39,12 @@ func NewDashboardUIHolder(dp *viewproject.DashboardProject, renderer port.Render
 
 func (inst *DashboardUIHolder) SetTriggerSenderFactory(fn func(jobID, diagramID string) data.TriggerSendFunc) {
 	inst.triggerSenderFactory = fn
+}
+
+// SetLogPanel attaches an optional log panel that is shown below the diagram grid
+// via a resizable VSplit (70% diagrams / 30% logs).
+func (inst *DashboardUIHolder) SetLogPanel(p port.UIObject) {
+	inst.logPanel = p
 }
 
 func (inst *DashboardUIHolder) SetOnClosed(close func()) {
@@ -58,7 +65,11 @@ func (inst *DashboardUIHolder) Create(dp *viewproject.DashboardProject) error {
 		return err
 	}
 
-	win.SetContent(res.Root)
+	content := res.Root
+	if inst.logPanel != nil {
+		content = inst.renderer.Layout().VSplit(res.Root, inst.logPanel, 0.7)
+	}
+	win.SetContent(content)
 	win.Resize(1100, 700)
 	win.Show()
 

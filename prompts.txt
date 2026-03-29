@@ -1,0 +1,1159 @@
+# Task: Execution Log Panel — Fyne UI Only
+
+## Overview
+Build the ExecutionLogPanel Fyne UI for EVAMON. The backend is already
+implemented — ExecutionLogRegistry, TriggerExecution, RingBuffer,
+TriggerExecutionCoordinator, triggerStreamTracker, and drainStream are
+all done. This task is UI only.
+
+The panel sits below the diagram grid via container.NewVSplit. It has
+its own toolbar with: maximize, detach, string filter, operation type
+filter, and JSON download. Navigation is a 3-level drill-down:
+diagram tab → rule tab → execution list → execution detail.
+
+---
+
+## Models available (already exist — do not recreate)
+```go
+// models.TriggerExecution
+type TriggerExecution struct {
+    TriggerID  string
+    FilePath   string
+    StartedAt  time.Time
+    FinishedAt *time.Time
+    Success    *bool
+    Lines      []ExecutionLogEntry
+}
+
+// models.ExecutionLogEntry
+type ExecutionLogEntry struct {
+    Stream    string
+    Line      string
+    ParsedMsg string
+    Timestamp time.Time
+}
+
+// services.ExecutionLogRegistry
+// Read-only methods available to UI:
+func (r *ExecutionLogRegistry) Get(diagramID, ruleID string) []*models.TriggerExecution
+func (r *ExecutionLogRegistry) Latest(diagramID, ruleID string) *models.TriggerExecution
+```
+
+The dashboard config (`models.Dashboard`) provides diagram and rule
+metadata. Only diagrams with at least one TriggerRule where
+`len(rule.Actions) > 0` qualify for a tab.
+
+---
+
+## File structure
+```
+ui/execution_log/
+    execution_log_panel.go       ← top-level panel, toolbar, VSplit wiring
+    execution_diagram_tab.go     ← per-diagram nested tab content
+    execution_rule_tab.go        ← per-rule tab, manages list/detail state
+    execution_list_view.go       ← State 1: clickable execution rows
+    execution_detail_view.go     ← State 2: log lines with filter/download
+    execution_log_toolbar.go     ← toolbar widget
+    execution_log_parser.go      ← log line parser (operation type extraction)
+```
+
+All structs use private fields with public constructor functions.
+No method longer than 20 lines.
+No business logic in UI files — read from ExecutionLogRegistry only.
+
+---
+
+## 1. ExecutionLogParser
+
+`ui/execution_log/execution_log_parser.go`
+
+Parse structured EVA log lines of the form:
+```
+Line:<N> <Name> <Type> <Phase>
+```
+
+Where `<Type>` is one of: `Operation`, `Label`, `Program`.
+Non-matching lines are considered free-form.
+```go
+type OperationType string
+
+const (
+    OperationTypeAll       OperationType = "All"
+    OperationTypeOperation OperationType = "Operation"
+    OperationTypeLabel     OperationType = "Label"
+    OperationTypeProgram   OperationType = "Program"
+    OperationTypeFreeForm  OperationType = ""
+)
+
+type ParsedLogLine struct {
+    Raw           string
+    LineNumber    int           // 0 if not structured
+    Name          string        // e.g. "MetricsIndexSave"
+    OperationType OperationType // empty if free-form
+    Phase         string        // "Start", "End", or ""
+    IsStructured  bool
+}
+
+func ParseLogLine(raw string) ParsedLogLine
+```
+
+Implementation notes:
+- Split on space — expect at least 4 tokens after "Line:N"
+- Extract line number via `strings.TrimPrefix(tokens[0], "Line:")`
+- Token[2] is OperationType — match against known types case-insensitively
+- Token[3] is Phase
+- If parsing fails at any point return `ParsedLogLine{Raw: raw, IsStructured: false}`
+
+---
+
+## 2. ExecutionLogToolbar
+
+`ui/execution_log/execution_log_toolbar.go`
+```go
+type ExecutionLogToolbar struct {
+    onMaximize   func()
+    onDetach     func()
+    onDownload   func()
+    filterText   *widget.Entry
+    filterType   *widget.Select
+    container    *fyne.Container
+}
+
+func NewExecutionLogToolbar(
+    onMaximize func(),
+    onDetach   func(),
+    onDownload func(),
+    onFilterText func(string),
+    onFilterType func(OperationType),
+) *ExecutionLogToolbar
+```
+
+Toolbar layout (horizontal):
+```
+[⛶ Maximize] [⧉ Detach] | [Search: ________] [Type: All▾] | [⬇ Download JSON]
+```
+
+- Maximize button: icon or label "⛶", calls `onMaximize()`
+- Detach button: icon or label "⧉", calls `onDetach()`
+- Separator: `widget.NewSeparator()` vertical
+- String filter: `widget.NewEntry()` with placeholder "Filter lines..."
+  calls `onFilterText(entry.Text)` on every keystroke via `OnChanged`
+- Type filter: `widget.NewSelect` with options:
+  `["All", "Operation", "Label", "Program"]`
+  default selection "All"
+  calls `onFilterType(OperationType(selected))` on change
+- Separator
+- Download button: label "⬇ JSON", calls `onDownload()`
+  disabled when no execution is selected (detail view not active)
+
+Expose:
+```go
+func (t *ExecutionLogToolbar) SetDownloadEnabled(enabled bool)
+func (t *ExecutionLogToolbar) Content() fyne.CanvasObject
+```
+
+---
+
+## 3. ExecutionLogPanel
+
+`ui/execution_log/execution_log_panel.go`
+```go
+type ExecutionLogPanel struct {
+    registry    *services.ExecutionLogRegistry
+    dashboard   *models.Dashboard
+    toolbar     *ExecutionLogToolbar
+    tabs        *widget.AppTabs
+    diagTabs    []*ExecutionDiagramTab
+    stopCh      chan struct{}
+    container   *fyne.Container
+    window      fyne.Window // parent window, needed for detach + file save
+}
+
+func NewExecutionLogPanel(
+    registry  *services.ExecutionLogRegistry,
+    dashboard *models.Dashboard,
+    window    fyne.Window,
+) *ExecutionLogPanel
+```
+
+Responsibilities:
+- Filters qualifying diagrams from dashboard config
+- Builds `ExecutionDiagramTab` per qualifying diagram
+- Builds toolbar with all callbacks wired
+- Assembles: `container.NewBorder(toolbar, nil, nil, nil, tabs)`
+- Starts auto-refresh goroutine (500ms ticker)
+- Exposes `Content() fyne.CanvasObject` and `Stop()`
+
+### Toolbar callbacks
+
+**onMaximize:**
+```go
+func (p *ExecutionLogPanel) onMaximize() {
+    // swap VSplit offset to 0.0 — log panel fills entire split
+    // store previous offset to restore on second click (toggle)
+}
+```
+
+**onDetach:**
+```go
+func (p *ExecutionLogPanel) onDetach() {
+    w := p.app.NewWindow("Execution Logs")
+    w.SetContent(p.buildTabsContent())
+    w.Resize(fyne.NewSize(900, 600))
+    w.Show()
+}
+```
+
+Pass `fyne.CurrentApp()` into the panel or store app reference
+during construction.
+
+**onDownload:**
+```go
+func (p *ExecutionLogPanel) onDownload() {
+    exec := p.activeExecution()  // returns currently viewed TriggerExecution
+    if exec == nil {
+        return
+    }
+    dialog.ShowFileSave(func(uc fyne.URIWriteCloser, err error) {
+        if err != nil || uc == nil {
+            return
+        }
+        defer uc.Close()
+        p.writeExecutionJSON(uc, exec)
+    }, p.window)
+}
+
+func (p *ExecutionLogPanel) writeExecutionJSON(w io.Writer, exec *models.TriggerExecution) error {
+    enc := json.NewEncoder(w)
+    enc.SetIndent("", "  ")
+    return enc.Encode(exec)
+}
+```
+
+`activeExecution()` retrieves the currently displayed
+`TriggerExecution` from the active rule tab's detail view.
+Returns nil if the detail view is not currently shown.
+
+### Auto-refresh
+```go
+func (p *ExecutionLogPanel) startAutoRefresh() {
+    ticker := time.NewTicker(500 * time.Millisecond)
+    go func() {
+        defer ticker.Stop()
+        for {
+            select {
+            case <-ticker.C:
+                p.refresh()
+            case <-p.stopCh:
+                return
+            }
+        }
+    }()
+}
+
+func (p *ExecutionLogPanel) refresh() {
+    for _, dt := range p.diagTabs {
+        dt.Refresh()
+    }
+}
+```
+
+All Fyne widget mutations inside `refresh()` must be safe to call
+from a goroutine. Use `canvas.Refresh(widget)` for redraws.
+Where content rebuild is needed wrap in a channel signal to the
+main thread rather than mutating widgets directly from the goroutine.
+
+---
+
+## 4. ExecutionDiagramTab
+
+`ui/execution_log/execution_diagram_tab.go`
+```go
+type ExecutionDiagramTab struct {
+    diagramID string
+    ruleTabs  []*ExecutionRuleTab
+    tabs      *widget.AppTabs
+}
+
+func NewExecutionDiagramTab(
+    diagramID string,
+    rules     []models.TriggerRule,
+    registry  *services.ExecutionLogRegistry,
+    onActiveExecChanged func(*models.TriggerExecution),
+) *ExecutionDiagramTab
+
+func (d *ExecutionDiagramTab) Content() fyne.CanvasObject
+func (d *ExecutionDiagramTab) Refresh()
+```
+
+- Builds one `ExecutionRuleTab` per rule where `len(rule.Actions) > 0`
+- Tab title = `rule.Label`
+- `Refresh()` calls `Refresh()` on each rule tab
+
+---
+
+## 5. ExecutionRuleTab
+
+`ui/execution_log/execution_rule_tab.go`
+```go
+type ExecutionRuleTab struct {
+    diagramID           string
+    ruleID              string
+    registry            *services.ExecutionLogRegistry
+    stack               *fyne.Container
+    listView            *ExecutionListView
+    detailView          *ExecutionDetailView
+    onActiveExecChanged func(*models.TriggerExecution)
+}
+
+func NewExecutionRuleTab(
+    diagramID, ruleID string,
+    registry            *services.ExecutionLogRegistry,
+    onActiveExecChanged func(*models.TriggerExecution),
+) *ExecutionRuleTab
+
+func (r *ExecutionRuleTab) Content() fyne.CanvasObject
+func (r *ExecutionRuleTab) Refresh()
+func (r *ExecutionRuleTab) ActiveExecution() *models.TriggerExecution
+```
+
+State management:
+```go
+func (r *ExecutionRuleTab) showDetail(exec *models.TriggerExecution) {
+    r.detailView.Load(exec)
+    r.onActiveExecChanged(exec)
+    r.stack.Objects = []fyne.CanvasObject{r.detailView.Content()}
+    r.stack.Refresh()
+}
+
+func (r *ExecutionRuleTab) showList() {
+    r.onActiveExecChanged(nil)
+    r.stack.Objects = []fyne.CanvasObject{r.listView.Content()}
+    r.stack.Refresh()
+}
+```
+
+`ActiveExecution()` returns `detailView.currentExec` if detail
+view is active, otherwise nil.
+
+`Refresh()` — if list view is active, refresh it. If detail view
+is active, do nothing (execution is already captured).
+
+---
+
+## 6. ExecutionListView — State 1
+
+`ui/execution_log/execution_list_view.go`
+```go
+type ExecutionListView struct {
+    diagramID string
+    ruleID    string
+    registry  *services.ExecutionLogRegistry
+    onSelect  func(*models.TriggerExecution)
+    rows      *fyne.Container
+    scroll    *container.Scroll
+}
+
+func NewExecutionListView(
+    diagramID, ruleID string,
+    registry  *services.ExecutionLogRegistry,
+    onSelect  func(*models.TriggerExecution),
+) *ExecutionListView
+
+func (v *ExecutionListView) Content() fyne.CanvasObject
+func (v *ExecutionListView) Refresh()
+```
+
+Each row is a `widget.Button` with label:
+```
+#<index>   <HH:MM:SS>   <base filename>   <status>
+```
+
+Where:
+- index: position newest=highest (len(executions) down to 1)
+- time: `exec.StartedAt.Format("15:04:05")`
+- filename: `filepath.Base(exec.FilePath)`
+- status: "✓" if success, "✗" if failed, "…" if in progress
+
+Rows are ordered newest first (reverse the `All()` slice).
+
+`Refresh()`:
+- Re-reads from registry
+- Rebuilds `rows.Objects`
+- Calls `rows.Refresh()`
+
+If registry returns empty slice show centered label:
+"No executions yet."
+
+---
+
+## 7. ExecutionDetailView — State 2
+
+`ui/execution_log/execution_detail_view.go`
+```go
+type ExecutionDetailView struct {
+    onBack        func()
+    currentExec   *models.TriggerExecution
+    filterText    string
+    filterType    OperationType
+    header        *widget.Label
+    linesBox      *fyne.Container
+    scroll        *container.Scroll
+    container     *fyne.Container
+}
+
+func NewExecutionDetailView(onBack func()) *ExecutionDetailView
+
+func (v *ExecutionDetailView) Content() fyne.CanvasObject
+func (v *ExecutionDetailView) Load(exec *models.TriggerExecution)
+func (v *ExecutionDetailView) ApplyFilterText(text string)
+func (v *ExecutionDetailView) ApplyFilterType(t OperationType)
+```
+
+Layout:
+```
+VBox
+  ├── HBox: [← Back]  [header: "#10 · 17:31:30 · ✓ success"]
+  ├── Separator
+  └── Scroll → VBox of filtered log line labels
+```
+
+Header format:
+```
+#<index> · <HH:MM:SS> · <✓ success | ✗ failed | … in progress>
+```
+
+Log line labels:
+- `widget.NewLabelWithStyle(line.ParsedMsg, fyne.TextAlignLeading, fyne.TextStyle{Monospace: true})`
+- Show `line.ParsedMsg` — never `line.Line`
+
+### Filter logic
+
+Both filters apply simultaneously (AND). A line passes if:
+```go
+func (v *ExecutionDetailView) linePassesFilter(entry models.ExecutionLogEntry) bool {
+    parsed := ParseLogLine(entry.ParsedMsg)
+    if v.filterType != OperationTypeAll && v.filterType != "" {
+        if parsed.OperationType != v.filterType {
+            return false
+        }
+    }
+    if v.filterText != "" {
+        if !strings.Contains(
+            strings.ToLower(entry.ParsedMsg),
+            strings.ToLower(v.filterText),
+        ) {
+            return false
+        }
+    }
+    return true
+}
+```
+
+`ApplyFilterText(text string)`:
+- Sets `v.filterText = text`
+- Calls `v.rebuildLines()`
+
+`ApplyFilterType(t OperationType)`:
+- Sets `v.filterType = t`
+- Calls `v.rebuildLines()`
+
+`rebuildLines()`:
+- Iterates `v.currentExec.Lines`
+- Applies `linePassesFilter`
+- Rebuilds `v.linesBox.Objects`
+- Calls `v.linesBox.Refresh()`
+- Calls `v.scroll.ScrollToTop()`
+
+If no lines pass the filter show centered label:
+"No lines match the current filter."
+
+If `currentExec.Lines` is empty show:
+"No output captured."
+
+---
+
+## 8. Toolbar ↔ Detail view wiring
+
+The toolbar filter callbacks must reach the currently active
+`ExecutionDetailView`. Wire this via the panel's active rule tab:
+```go
+// In ExecutionLogPanel toolbar setup:
+onFilterText: func(text string) {
+    if rt := p.activeRuleTab(); rt != nil {
+        rt.detailView.ApplyFilterText(text)
+    }
+},
+onFilterType: func(t OperationType) {
+    if rt := p.activeRuleTab(); rt != nil {
+        rt.detailView.ApplyFilterType(t)
+    }
+},
+```
+
+`activeRuleTab()` — traverse the selected diagram tab → selected
+rule tab and return the `ExecutionRuleTab`.
+
+Download enabled state:
+```go
+// In onActiveExecChanged callback:
+func(exec *models.TriggerExecution) {
+    p.toolbar.SetDownloadEnabled(exec != nil)
+}
+```
+
+---
+
+## 9. VSplit wiring in dashboard
+
+In the existing dashboard builder replace the current main content
+with a VSplit:
+```go
+logPanel := execution_log.NewExecutionLogPanel(
+    executionRegistry,
+    dashboard,
+    mainWindow,
+)
+
+split := container.NewVSplit(
+    diagramGrid,
+    logPanel.Content(),
+)
+split.Offset = 0.7
+
+mainWindow.SetContent(split)
+
+mainWindow.SetOnClosed(func() {
+    logPanel.Stop()
+})
+```
+
+---
+
+## 10. Coding standards
+
+- No method longer than 20 lines.
+- All structs use private fields with public constructor functions.
+- No business logic in UI files — read from ExecutionLogRegistry only.
+- Widget construction happens in constructors only — never in Refresh()
+  or filter methods. Refresh/filter only mutates .Objects and calls
+  .Refresh() on existing containers.
+- filepath.Base() everywhere a file path is displayed.
+- fyne.CurrentApp() used inside onDetach to create the new window.
+- All goroutine→UI communication must be thread safe — use
+  canvas.Refresh() for redraws, never mutate widget state from
+  a non-main goroutine directly.
+- ParsedMsg is always shown — never the raw Line field.
+- OperationType constants defined in execution_log_parser.go and
+  used across all UI files in the package.
+
+
+# Task: Execution Log Panel — Toolbar Update + Log Renderer + Style Config
+
+## Overview
+This is a targeted update to the existing ExecutionLogPanel UI.
+The backend and the panel structure are already implemented.
+This prompt covers four focused changes:
+
+1. Toolbar redesign — two-row layout, filters fill available width
+2. Remove all stderr/stdout labels from the UI entirely
+3. Execution status styling — red/green in the list view
+4. Log line renderer — colored left bar + badge per operation type,
+   driven by a JSON style config file
+
+---
+
+## 1. Toolbar redesign
+
+Update `ui/execution_log/execution_log_toolbar.go`.
+
+### New two-row layout
+
+**Row 1 — action buttons:**
+```
+[⛶ Maximize]  [⧉ Detach]                    [⬇ Download JSON]
+```
+```go
+row1 := container.NewHBox(
+    maximizeBtn,
+    detachBtn,
+    layout.NewSpacer(),
+    downloadBtn,
+)
+```
+
+**Row 2 — filters (fill available width):**
+```
+[Filter lines...________________________]  [All          ▾]
+```
+```go
+row2 := container.NewBorder(nil, nil, nil, typeSelect, filterEntry)
+```
+
+- `filterEntry` expands to fill all remaining horizontal space
+- `typeSelect` is anchored to the right at a fixed comfortable width
+- Type select options: `["All", "Operation", "Label", "Program"]`
+- Default selection: `"All"`
+
+**Final assembly:**
+```go
+container.NewVBox(row1, row2)
+```
+
+### Remove stream filter
+- Remove any `stdout`/`stderr` filter option from the toolbar entirely
+- Remove any stream-related label, dropdown, or checkbox
+- Type filter contains ONLY: `All`, `Operation`, `Label`, `Program`
+
+---
+
+## 2. Remove stderr / stdout from UI
+
+Search the entire `ui/execution_log/` package and remove every
+reference to stream labels. Specifically:
+
+- Do NOT render `entry.Stream` anywhere
+- Do NOT prefix log lines with `[stderr]` or `[stdout]`
+- Do NOT show stream as a column in the execution list view
+- Do NOT show stream as a field in the execution detail view
+- `entry.ParsedMsg` is the only field rendered for log lines
+
+---
+
+## 3. Execution status styling in ExecutionListView
+
+Update `ui/execution_log/execution_list_view.go`.
+
+Each execution row must visually reflect its status:
+
+- **In progress** (`exec.FinishedAt == nil`):
+  status text = "…", no color change, default style
+- **Success** (`*exec.Success == true`):
+  status text = "✓", status label color = `color.NRGBA{R:0, G:180, B:0, A:255}`
+- **Failed** (`*exec.Success == false`):
+  status text = "✗", status label color = `color.NRGBA{R:200, G:0, B:0, A:255}`
+
+Each row is a `container.NewHBox` of individual labels rather than
+a single `widget.Button`, so each label can be styled independently:
+```go
+func (v *ExecutionListView) buildRow(
+    index int,
+    exec *models.TriggerExecution,
+) fyne.CanvasObject {
+    indexLabel  := widget.NewLabel(fmt.Sprintf("#%d", index))
+    timeLabel   := widget.NewLabel(exec.StartedAt.Format("15:04:05"))
+    fileLabel   := widget.NewLabel(filepath.Base(exec.FilePath))
+    statusLabel := v.buildStatusLabel(exec)
+    row := container.NewHBox(indexLabel, timeLabel, fileLabel, statusLabel)
+    return v.wrapClickable(row, exec)
+}
+
+func (v *ExecutionListView) buildStatusLabel(exec *models.TriggerExecution) *canvas.Text {
+    if exec.FinishedAt == nil {
+        return canvas.NewText("…", theme.ForegroundColor())
+    }
+    if *exec.Success {
+        return canvas.NewText("✓", color.NRGBA{R: 0, G: 180, B: 0, A: 255})
+    }
+    return canvas.NewText("✗", color.NRGBA{R: 200, G: 0, B: 0, A: 255})
+}
+```
+
+`wrapClickable` wraps the row in a `widget.Button` with empty text
+and custom layout, OR use `desktop.Hoverable` + `fyne.Tappable` on
+a custom widget. The simplest approach is:
+```go
+func (v *ExecutionListView) wrapClickable(
+    content fyne.CanvasObject,
+    exec *models.TriggerExecution,
+) fyne.CanvasObject {
+    btn := widget.NewButton("", func() { v.onSelect(exec) })
+    return container.NewStack(btn, content)
+}
+```
+
+---
+
+## 4. Log style config file
+
+### 4a. Config file location
+
+Create `config/log_styles.json` in the project root:
+```json
+{
+  "styles": {
+    "Label": {
+      "borderColor": "#4A90D9",
+      "badgeColor":  "#4A90D9",
+      "badgeText":   "Label"
+    },
+    "Operation": {
+      "borderColor": "#E6A817",
+      "badgeColor":  "#E6A817",
+      "badgeText":   "Operation"
+    },
+    "Program": {
+      "borderColor": "#7B68EE",
+      "badgeColor":  "#7B68EE",
+      "badgeText":   "Program"
+    }
+  },
+  "freeFormColor": "#888888"
+}
+```
+
+Colors are hex strings. Start and End phases share the same color
+per operation type. Free-form lines use `freeFormColor` for the
+left bar only — no badge.
+
+### 4b. LogStyleConfig model
+
+Create `ui/execution_log/log_style_config.go`:
+```go
+package execution_log
+
+import (
+    "encoding/json"
+    "image/color"
+    "os"
+    "strconv"
+)
+
+type OperationStyle struct {
+    BorderColor string `json:"borderColor"`
+    BadgeColor  string `json:"badgeColor"`
+    BadgeText   string `json:"badgeText"`
+}
+
+type LogStyleConfig struct {
+    Styles        map[string]OperationStyle `json:"styles"`
+    FreeFormColor string                    `json:"freeFormColor"`
+}
+
+func LoadLogStyleConfig(path string) (*LogStyleConfig, error) {
+    data, err := os.ReadFile(path)
+    if err != nil {
+        return defaultLogStyleConfig(), nil // fallback to defaults
+    }
+    var cfg LogStyleConfig
+    if err := json.Unmarshal(data, &cfg); err != nil {
+        return defaultLogStyleConfig(), nil
+    }
+    return &cfg, nil
+}
+
+func (c *LogStyleConfig) StyleFor(opType OperationType) (OperationStyle, bool) {
+    s, ok := c.Styles[string(opType)]
+    return s, ok
+}
+
+func (c *LogStyleConfig) FreeFormColorParsed() color.Color {
+    return parseHexColor(c.FreeFormColor)
+}
+
+func defaultLogStyleConfig() *LogStyleConfig {
+    return &LogStyleConfig{
+        Styles: map[string]OperationStyle{
+            "Label":     {BorderColor: "#4A90D9", BadgeColor: "#4A90D9", BadgeText: "Label"},
+            "Operation": {BorderColor: "#E6A817", BadgeColor: "#E6A817", BadgeText: "Operation"},
+            "Program":   {BorderColor: "#7B68EE", BadgeColor: "#7B68EE", BadgeText: "Program"},
+        },
+        FreeFormColor: "#888888",
+    }
+}
+
+func parseHexColor(hex string) color.NRGBA {
+    hex = strings.TrimPrefix(hex, "#")
+    if len(hex) != 6 {
+        return color.NRGBA{R: 128, G: 128, B: 128, A: 255}
+    }
+    r, _ := strconv.ParseUint(hex[0:2], 16, 8)
+    g, _ := strconv.ParseUint(hex[2:4], 16, 8)
+    b, _ := strconv.ParseUint(hex[4:6], 16, 8)
+    return color.NRGBA{R: uint8(r), G: uint8(g), B: uint8(b), A: 255}
+}
+```
+
+### 4c. LogLineRenderer
+
+Create `ui/execution_log/log_line_renderer.go`:
+```go
+package execution_log
+
+type LogLineRenderer struct {
+    config *LogStyleConfig
+}
+
+func NewLogLineRenderer(config *LogStyleConfig) *LogLineRenderer {
+    return &LogLineRenderer{config: config}
+}
+
+func (r *LogLineRenderer) Render(entry models.ExecutionLogEntry) fyne.CanvasObject {
+    parsed := ParseLogLine(entry.ParsedMsg)
+    if !parsed.IsStructured {
+        return r.renderFreeForm(entry.ParsedMsg)
+    }
+    return r.renderStructured(entry.ParsedMsg, parsed.OperationType)
+}
+
+func (r *LogLineRenderer) renderStructured(msg string, opType OperationType) fyne.CanvasObject {
+    style, ok := r.config.StyleFor(opType)
+    if !ok {
+        return r.renderFreeForm(msg)
+    }
+    borderColor := parseHexColor(style.BorderColor)
+    badgeColor  := parseHexColor(style.BadgeColor)
+    return r.buildRenderedLine(msg, borderColor, badgeColor, style.BadgeText)
+}
+
+func (r *LogLineRenderer) renderFreeForm(msg string) fyne.CanvasObject {
+    borderColor := r.config.FreeFormColorParsed()
+    return r.buildFreeFormLine(msg, borderColor)
+}
+
+func (r *LogLineRenderer) buildRenderedLine(
+    msg string,
+    borderColor, badgeColor color.Color,
+    badgeText string,
+) fyne.CanvasObject {
+    bar   := r.buildLeftBar(borderColor)
+    badge := r.buildBadge(badgeText, badgeColor)
+    label := widget.NewLabelWithStyle(msg, fyne.TextAlignLeading, fyne.TextStyle{Monospace: true})
+    return container.NewHBox(bar, badge, label)
+}
+
+func (r *LogLineRenderer) buildFreeFormLine(
+    msg string,
+    borderColor color.Color,
+) fyne.CanvasObject {
+    bar   := r.buildLeftBar(borderColor)
+    label := widget.NewLabelWithStyle(msg, fyne.TextAlignLeading, fyne.TextStyle{Monospace: true})
+    return container.NewHBox(bar, label)
+}
+
+func (r *LogLineRenderer) buildLeftBar(c color.Color) fyne.CanvasObject {
+    rect := canvas.NewRectangle(c)
+    rect.SetMinSize(fyne.NewSize(4, 20))
+    return rect
+}
+
+func (r *LogLineRenderer) buildBadge(text string, c color.Color) fyne.CanvasObject {
+    bg    := canvas.NewRectangle(c)
+    label := canvas.NewText(text, color.White)
+    label.TextSize = 10
+    label.TextStyle = fyne.TextStyle{Bold: true}
+    bg.SetMinSize(fyne.NewSize(float32(len(text))*7+8, 18))
+    return container.NewStack(bg, container.NewCenter(label))
+}
+```
+
+### 4d. Wire LogLineRenderer into ExecutionDetailView
+
+Update `ui/execution_log/execution_detail_view.go`:
+
+- Add `renderer *LogLineRenderer` field
+- Inject via constructor:
+```go
+  func NewExecutionDetailView(
+      onBack   func(),
+      renderer *LogLineRenderer,
+  ) *ExecutionDetailView
+```
+- In `rebuildLines()` replace direct label creation with:
+```go
+  for _, entry := range v.currentExec.Lines {
+      if !v.linePassesFilter(entry) {
+          continue
+      }
+      v.linesBox.Add(v.renderer.Render(entry))
+  }
+```
+
+### 4e. Load config at startup
+
+In the app bootstrap / composition root, load the config once and
+pass it down:
+```go
+styleConfig, _ := execution_log.LoadLogStyleConfig("config/log_styles.json")
+renderer       := execution_log.NewLogLineRenderer(styleConfig)
+
+logPanel := execution_log.NewExecutionLogPanel(
+    executionRegistry,
+    dashboard,
+    mainWindow,
+    fyne.CurrentApp(),
+    nil,
+    renderer,  // new param
+)
+```
+
+Update `NewExecutionLogPanel` signature to accept `*LogLineRenderer`
+and thread it down to `ExecutionDetailView` via
+`ExecutionRuleTab` → `ExecutionDetailView`.
+
+---
+
+## 5. Coding standards
+
+- No method longer than 20 lines.
+- All structs use private fields with public constructor functions.
+- Never render `entry.Line` or `entry.Stream` anywhere in the UI.
+- Always render `entry.ParsedMsg`.
+- `LogStyleConfig` fallback to hardcoded defaults if JSON file is
+  missing or malformed — never crash on missing config.
+- `parseHexColor` must handle missing `#` prefix gracefully.
+- Badge text color is always `color.White` regardless of badge
+  background color.
+- Left bar width is always 4px. Height matches the line height (20px min).
+- Free-form lines get a left bar only — no badge.
+- Structured lines get both left bar and badge.
+- `LogLineRenderer` has no knowledge of Fyne theme — all colors
+  come from `LogStyleConfig`.
+
+  # Task: ExecutionResult message handling in drainStream
+
+## Overview
+EVACRON sends two types of messages over the stream WebSocket during
+a trigger execution:
+
+1. **Log lines** — `ExecutionOutput` — streamed during execution
+2. **Final result** — `ExecutionResult` — sent once when execution ends
+
+The two message types are discriminated by the presence of the
+`success` key in the JSON — only `ExecutionResult` carries it.
+`ExecutionOutput` never has a `success` field.
+
+When an `ExecutionResult` message is received, the stream for that
+trigger is considered complete. The result carries a success/failure
+flag and an optional error message.
+
+Examples of each message type:
+```json
+// ExecutionOutput — log line during execution
+{"jobId":"3dfc21a8-...","filePath":"C:/Scripts/main.eva","stream":"stderr","line":"Program Start."}
+
+// ExecutionResult — success
+{"jobId":"3dfc21a8-...","success":true}
+
+// ExecutionResult — failure
+{"jobId":"3dfc21a8-...","success":false,"error":"exit status 1"}
+```
+
+---
+
+## Models
+
+### ExecutionOutput (already exists — do not change)
+```go
+type ExecutionOutput struct {
+    JobID    string `json:"jobId"`
+    FilePath string `json:"filePath"`
+    Stream   string `json:"stream"`
+    Line     string `json:"line"`
+}
+```
+
+### ExecutionResult (new — create models/execution_result.go)
+```go
+package models
+
+type ExecutionResult struct {
+    JobID   string `json:"jobId"`
+    Success bool   `json:"success"`
+    Error   string `json:"error,omitempty"`
+}
+```
+
+---
+
+## Message discrimination
+
+The discriminator is the presence of the `success` key in the raw
+JSON. Use `map[string]json.RawMessage` to check for the key before
+attempting full unmarshalling:
+```go
+func (inst *WidgetService) tryParseResult(text string) (models.ExecutionResult, bool) {
+    var raw map[string]json.RawMessage
+    if err := json.Unmarshal([]byte(text), &raw); err != nil {
+        return models.ExecutionResult{}, false
+    }
+    if _, hasSuccess := raw["success"]; !hasSuccess {
+        return models.ExecutionResult{}, false
+    }
+    var result models.ExecutionResult
+    if err := json.Unmarshal([]byte(text), &result); err != nil {
+        return models.ExecutionResult{}, false
+    }
+    return result, true
+}
+```
+
+This correctly handles all cases:
+- `{"jobId":"...","success":true}` → ExecutionResult ✓
+- `{"jobId":"...","success":false,"error":"exit status 1"}` → ExecutionResult ✓
+- `{"jobId":"...","filePath":"...","line":"..."}` → ExecutionOutput ✓
+
+---
+
+## handleStreamLine and related methods
+```go
+func (inst *WidgetService) handleStreamLine(
+    msg  *models.TriggerOperationMsg,
+    text string,
+) {
+    if result, ok := inst.tryParseResult(text); ok {
+        inst.handleExecutionResult(msg, result)
+        return
+    }
+    inst.handleOutputLine(msg.ID, text)
+}
+
+func (inst *WidgetService) handleOutputLine(triggerID, text string) {
+    var output models.ExecutionOutput
+    if err := json.Unmarshal([]byte(text), &output); err != nil {
+        return
+    }
+    if output.Line == "" {
+        return
+    }
+    inst.streamTracker.recordLine(triggerID, output)
+}
+
+func (inst *WidgetService) handleExecutionResult(
+    msg    *models.TriggerOperationMsg,
+    result models.ExecutionResult,
+) {
+    if !result.Success && result.Error != "" && result.Error != "exit status 1" {
+        inst.streamTracker.recordError(msg.ID, result.Error)
+    }
+    inst.streamTracker.completeWithResult(msg, result.Success)
+}
+```
+
+---
+
+## Error suppression rule
+
+- `result.Success == true` → complete immediately, no error handling
+- `result.Success == false` and `result.Error == "exit status 1"` →
+  suppress the error, do NOT add to log lines, complete as failed
+- `result.Success == false` and `result.Error` is any other non-empty
+  string → record as a log line via `recordError`, then complete as failed
+- `result.Success == false` and `result.Error == ""` → complete as
+  failed, nothing to log
+
+---
+
+## Update triggerStreamTracker
+
+### Add recordError
+```go
+func (t *triggerStreamTracker) recordError(triggerID, errMsg string) {
+    t.mu.Lock()
+    defer t.mu.Unlock()
+    output := models.ExecutionOutput{
+        JobID: triggerID,
+        Line:  errMsg,
+    }
+    t.coordinator.OnLine(triggerID, output)
+}
+```
+
+Note: do NOT set `Stream` on the error output — stream is irrelevant
+and never shown in the UI.
+
+### Add completeWithResult (replaces complete)
+```go
+func (t *triggerStreamTracker) completeWithResult(
+    msg     *models.TriggerOperationMsg,
+    success bool,
+) {
+    t.mu.Lock()
+    defer t.mu.Unlock()
+    t.coordinator.OnDone(msg, success)
+    t.entries[msg.ID].Status = models.TriggerOperationStatusDone
+}
+```
+
+Remove the old `complete(msg *models.TriggerOperationMsg)` method
+and update all call sites to use `completeWithResult`.
+
+---
+
+## Update TriggerExecutionCoordinator
+
+### Update OnDone signature
+```go
+func (c *TriggerExecutionCoordinator) OnDone(
+    msg     *models.TriggerOperationMsg,
+    success bool,
+) {
+    b, ok := c.active[msg.ID]
+    if !ok {
+        return
+    }
+    exec := b.Finish(success)
+    c.registry.Push(msg.DiagramID, msg.RuleID, exec)
+    delete(c.active, msg.ID)
+}
+```
+
+Remove the old `OnDone` that inferred success from `msg.Status`.
+Success is always passed explicitly from `ExecutionResult`.
+
+---
+
+## Update drainStream
+
+Completion is triggered inside `handleStreamLine` when an
+`ExecutionResult` is detected — not at the end of `drainStream`.
+The stream end marker and final acknowledgement remain unchanged
+as they are part of the WebSocket protocol handshake.
+```go
+func (inst *WidgetService) drainStream(
+    ctx    context.Context,
+    client *wsclient.Client,
+    msgID  string,
+    msg    *models.TriggerOperationMsg,
+) error {
+    if err := client.SendText(ctx, TRIGGER_PROTOCOL_ACKNOWLEDGEMENT); err != nil {
+        return err
+    }
+    inst.streamTracker.updateStatus(msgID, models.TriggerOperationStatusAck)
+
+    for {
+        text, err := client.ReadText(ctx)
+        if err != nil {
+            return err
+        }
+        if text == TRIGGER_STREAM_END {
+            break
+        }
+        if inst.logger != nil {
+            inst.logger.Info(fmt.Sprintf("[trigger %s] %s", msgID, text))
+        }
+        inst.handleStreamLine(msg, text)
+    }
+
+    _ = client.SendText(ctx, TRIGGER_PROTOCOL_ACKNOWLEDGEMENT)
+    return nil
+}
+```
+
+---
+
+## Coding standards
+
+- No method longer than 20 lines.
+- All structs use private fields with public constructor functions.
+- The presence of the `success` JSON key is the sole discriminator
+  between `ExecutionResult` and `ExecutionOutput` — never use
+  `jobId` alone as the discriminator.
+- `result.Error == "exit status 1"` is the only suppressed error
+  string — all other non-empty errors are recorded as log lines.
+- Never set or render `Stream` field anywhere — it is irrelevant.
+- `OnDone` always receives `success` explicitly — never infer it
+  from `msg.Status`.
+- `tryParseResult` uses `map[string]json.RawMessage` for key
+  presence check before full unmarshal — never rely on zero values
+  to discriminate message types.

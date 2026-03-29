@@ -124,6 +124,12 @@ func (Layout) DiagramLegend(items []port.LegendItem, onClick func(*port.LegendIt
 func (Layout) SetLegendAction(legend port.UIObject, onClick func(*port.LegendItem)) {
 	unwrap(legend)
 }
+func (Layout) VSplit(top, bottom port.UIObject, offset float64) port.UIObject {
+	split := container.NewVSplit(unwrap(top), unwrap(bottom))
+	split.Offset = offset
+	return wrap(split)
+}
+
 func (Layout) Border(top, bottom, left, right, center port.UIObject) port.UIObject {
 	var topObj, bottomObj, leftObj, rightObj, centerObj fyne.CanvasObject
 

@@ -51,4 +51,8 @@ type Layout interface {
 	SetLegendAction(legend UIObject, onClick func(*LegendItem))
 
 	Border(top, bottom, left, right, center UIObject) UIObject
+
+	// VSplit places top above bottom with a user-draggable divider.
+	// offset is the initial split position in the range [0, 1] (e.g. 0.7 = 70% top).
+	VSplit(top, bottom UIObject, offset float64) UIObject
 }

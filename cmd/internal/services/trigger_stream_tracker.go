@@ -54,10 +54,20 @@ func (t *triggerStreamTracker) recordLine(triggerID string, output models.Execut
 	t.coordinator.OnLine(triggerID, output)
 }
 
-func (t *triggerStreamTracker) complete(msg *models.TriggerOperationMsg) {
+func (t *triggerStreamTracker) recordError(triggerID, errMsg string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.coordinator.OnDone(msg)
+	output := models.ExecutionOutput{
+		JobID: triggerID,
+		Line:  errMsg,
+	}
+	t.coordinator.OnLine(triggerID, output)
+}
+
+func (t *triggerStreamTracker) completeWithResult(msg *models.TriggerOperationMsg, success bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.coordinator.OnDone(msg, success)
 	t.entries[msg.ID].Status = models.TriggerOperationStatusDone
 }
 

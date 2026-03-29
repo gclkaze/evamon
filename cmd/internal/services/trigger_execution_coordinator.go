@@ -27,12 +27,11 @@ func (c *TriggerExecutionCoordinator) OnLine(triggerID string, output models.Exe
 	}
 }
 
-func (c *TriggerExecutionCoordinator) OnDone(msg *models.TriggerOperationMsg) {
+func (c *TriggerExecutionCoordinator) OnDone(msg *models.TriggerOperationMsg, success bool) {
 	b, ok := c.active[msg.ID]
 	if !ok {
 		return
 	}
-	success := msg.Status == models.TriggerOperationStatusDone
 	exec := b.Finish(success)
 	c.registry.Push(msg.DiagramID, msg.RuleID, exec)
 	delete(c.active, msg.ID)

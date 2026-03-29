@@ -1,12 +1,16 @@
 package cmd
 
 import (
+	"context"
 	"os"
+	"path"
 
 	"github.com/gclkaze/evamon/cmd/internal/app"
 	"github.com/gclkaze/evamon/cmd/internal/services"
 	fynediagrams "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/fyne"
 	ui "github.com/gclkaze/evamon/cmd/internal/ui/factory"
+	executionlog "github.com/gclkaze/evamon/cmd/internal/ui/fyne/execution_log"
+	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
 	"github.com/gclkaze/evamon/cmd/job"
 	"github.com/gclkaze/evamon/cmd/view"
 	"github.com/spf13/cobra"
@@ -67,6 +71,7 @@ func NewRootCmd() *cobra.Command {
 	coordinator := services.NewTriggerExecutionCoordinator(executionRegistry)
 
 	widgetService := services.NewWidgetService(r, df, coordinator)
+
 	viewService := services.NewViewService(widgetService)
 
 	app := app.NewEvamon("evamon", verbose, jobService, viewService)
@@ -75,6 +80,14 @@ func NewRootCmd() *cobra.Command {
 		app.GetPrinter().Error(err)
 		return nil
 	}
+
+	styleConfig, _ := executionlog.LoadLogStyleConfig(path.Join(app.GetConfigPath(), "log_styles.json"))
+	logRenderer := executionlog.NewLogLineRenderer(styleConfig)
+	widgetService.SetLogPanelBuilder(func() uport.UIObject {
+		panel := executionlog.NewExecutionLogPanel(executionRegistry, nil, logRenderer)
+		panel.StartRefresh(context.Background())
+		return panel
+	})
 	jobService.SetSetup(app)
 	widgetService.SetSetup(app)
 	viewService.SetSetup(app)

@@ -57,6 +57,10 @@ func (inst Evamon) GetWidgetPath() string {
 	return inst.paths.Lib
 }
 
+func (inst Evamon) GetConfigPath() string {
+	return inst.paths.Config
+}
+
 func (inst Evamon) GetPrinter() output.Printer {
 	return inst.logger
 }

@@ -35,6 +35,10 @@ type WidgetService struct {
 	triggerSenderFactory func(jobID, diagramID string) data.TriggerSendFunc
 	streamTracker        *triggerStreamTracker
 	coord                *TriggerExecutionCoordinator
+
+	// logPanelBuilder is an optional factory that creates the execution log panel
+	// as a port.UIObject. It is called once when building the dashboard UI.
+	logPanelBuilder func() port.UIObject
 }
 
 func NewWidgetService(r port.Renderer, df porter.Factory, coord *TriggerExecutionCoordinator) *WidgetService {
@@ -155,15 +159,37 @@ func (inst *WidgetService) drainStream(ctx context.Context, client *wsclient.Cli
 		if inst.logger != nil {
 			inst.logger.Info(fmt.Sprintf("[trigger %s] %s", msgID, text))
 		}
-		inst.handleStreamLine(msgID, text)
+		inst.handleStreamLine(msg, text)
 	}
 
 	_ = client.SendText(ctx, TRIGGER_PROTOCOL_ACKNOWLEDGEMENT)
-	inst.streamTracker.complete(msg)
 	return nil
 }
 
-func (inst *WidgetService) handleStreamLine(triggerID, text string) {
+func (inst *WidgetService) tryParseResult(text string) (models.ExecutionResult, bool) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(text), &raw); err != nil {
+		return models.ExecutionResult{}, false
+	}
+	if _, hasSuccess := raw["success"]; !hasSuccess {
+		return models.ExecutionResult{}, false
+	}
+	var result models.ExecutionResult
+	if err := json.Unmarshal([]byte(text), &result); err != nil {
+		return models.ExecutionResult{}, false
+	}
+	return result, true
+}
+
+func (inst *WidgetService) handleStreamLine(msg *models.TriggerOperationMsg, text string) {
+	if result, ok := inst.tryParseResult(text); ok {
+		inst.handleExecutionResult(msg, result)
+		return
+	}
+	inst.handleOutputLine(msg.ID, text)
+}
+
+func (inst *WidgetService) handleOutputLine(triggerID, text string) {
 	var output models.ExecutionOutput
 	if err := json.Unmarshal([]byte(text), &output); err != nil {
 		return
@@ -172,6 +198,19 @@ func (inst *WidgetService) handleStreamLine(triggerID, text string) {
 		return
 	}
 	inst.streamTracker.recordLine(triggerID, output)
+}
+
+func (inst *WidgetService) handleExecutionResult(msg *models.TriggerOperationMsg, result models.ExecutionResult) {
+	if !result.Success && result.Error != "" && result.Error != "exit status 1" {
+		inst.streamTracker.recordError(msg.ID, result.Error)
+	}
+	inst.streamTracker.completeWithResult(msg, result.Success)
+}
+
+// SetLogPanelBuilder registers a factory that produces the execution log panel.
+// Must be called before CreateDashboardProjectUI.
+func (inst *WidgetService) SetLogPanelBuilder(fn func() port.UIObject) {
+	inst.logPanelBuilder = fn
 }
 
 func (inst *WidgetService) SetOnClosed(close func()) {
@@ -206,6 +245,9 @@ func (inst *WidgetService) CreateDashboardProjectUI(dp *viewproject.DashboardPro
 	inst.dashboardHolder = ui.NewDashboardUIHolder(dp, inst.renderer, inst.drawerFactory, props, inst.jobRouter)
 	if inst.triggerSenderFactory != nil {
 		inst.dashboardHolder.SetTriggerSenderFactory(inst.triggerSenderFactory)
+	}
+	if inst.logPanelBuilder != nil {
+		inst.dashboardHolder.SetLogPanel(inst.logPanelBuilder())
 	}
 	err := inst.dashboardHolder.Create(dp)
 	if err != nil {

@@ -56,3 +56,19 @@ func (r *ExecutionLogRegistry) Latest(diagramID, ruleID string) *models.TriggerE
 	}
 	return nil
 }
+
+// Snapshot returns a point-in-time copy of all stored executions as
+// diagramID → ruleID → []TriggerExecution slices. The returned data is
+// independent of the registry's internal state.
+func (r *ExecutionLogRegistry) Snapshot() map[string]map[string][]*models.TriggerExecution {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make(map[string]map[string][]*models.TriggerExecution, len(r.logs))
+	for diagID, rules := range r.logs {
+		out[diagID] = make(map[string][]*models.TriggerExecution, len(rules))
+		for ruleID, ring := range rules {
+			out[diagID][ruleID] = ring.All()
+		}
+	}
+	return out
+}
