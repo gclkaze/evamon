@@ -63,7 +63,10 @@ func NewRootCmd() *cobra.Command {
 
 	//r.Run()
 
-	widgetService := services.NewWidgetService(r, df)
+	executionRegistry := services.NewExecutionLogRegistry()
+	coordinator := services.NewTriggerExecutionCoordinator(executionRegistry)
+
+	widgetService := services.NewWidgetService(r, df, coordinator)
 	viewService := services.NewViewService(widgetService)
 
 	app := app.NewEvamon("evamon", verbose, jobService, viewService)

@@ -34,10 +34,11 @@ type WidgetService struct {
 
 	triggerSenderFactory func(jobID, diagramID string) data.TriggerSendFunc
 	streamTracker        *triggerStreamTracker
+	coord                *TriggerExecutionCoordinator
 }
 
-func NewWidgetService(r port.Renderer, df porter.Factory) *WidgetService {
-	return &WidgetService{renderer: r, drawerFactory: df, variableContainer: ui.NewVariableContainer(), jobRouter: ui.NewJobRouter()}
+func NewWidgetService(r port.Renderer, df porter.Factory, coord *TriggerExecutionCoordinator) *WidgetService {
+	return &WidgetService{renderer: r, drawerFactory: df, variableContainer: ui.NewVariableContainer(), jobRouter: ui.NewJobRouter(), coord: coord}
 }
 
 func (inst *WidgetService) logErr(err error) {
@@ -49,7 +50,7 @@ func (inst *WidgetService) logErr(err error) {
 func (inst *WidgetService) SetSetup(setup MainSetup) {
 	inst.setup = setup
 	inst.logger = setup.GetPrinter()
-	inst.streamTracker = newTriggerStreamTracker()
+	inst.streamTracker = newTriggerStreamTracker(inst.coord)
 
 	inst.triggerSenderFactory = func(jobID, diagramID string) data.TriggerSendFunc {
 		return func(ruleID string, files []string) {
@@ -132,16 +133,17 @@ func (inst *WidgetService) runStream(msgID string, streamPort int) error {
 		return err
 	}
 	defer client.Close()
-	return inst.drainStream(ctx, client, msgID)
+	return inst.drainStream(ctx, client, msgID, inst.streamTracker.GetMessage(msgID))
 }
 
 // drainStream sends the opening ACK, prints messages until STREAM-END, then
 // sends the closing ACK.
-func (inst *WidgetService) drainStream(ctx context.Context, client *wsclient.Client, msgID string) error {
+func (inst *WidgetService) drainStream(ctx context.Context, client *wsclient.Client, msgID string, msg *models.TriggerOperationMsg) error {
 	if err := client.SendText(ctx, TRIGGER_PROTOCOL_ACKNOWLEDGEMENT); err != nil {
 		return err
 	}
 	inst.streamTracker.updateStatus(msgID, models.TriggerOperationStatusAck)
+
 	for {
 		text, err := client.ReadText(ctx)
 		if err != nil {
@@ -153,10 +155,23 @@ func (inst *WidgetService) drainStream(ctx context.Context, client *wsclient.Cli
 		if inst.logger != nil {
 			inst.logger.Info(fmt.Sprintf("[trigger %s] %s", msgID, text))
 		}
+		inst.handleStreamLine(msgID, text)
 	}
+
 	_ = client.SendText(ctx, TRIGGER_PROTOCOL_ACKNOWLEDGEMENT)
-	inst.streamTracker.updateStatus(msgID, models.TriggerOperationStatusDone)
+	inst.streamTracker.complete(msg)
 	return nil
+}
+
+func (inst *WidgetService) handleStreamLine(triggerID, text string) {
+	var output models.ExecutionOutput
+	if err := json.Unmarshal([]byte(text), &output); err != nil {
+		return
+	}
+	if output.Line == "" {
+		return
+	}
+	inst.streamTracker.recordLine(triggerID, output)
 }
 
 func (inst *WidgetService) SetOnClosed(close func()) {

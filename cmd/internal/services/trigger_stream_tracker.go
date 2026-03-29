@@ -17,12 +17,16 @@ type triggerStreamEntry struct {
 // triggerStreamTracker maps TriggerOperationMsg.ID → entry so that every
 // in-flight trigger can be inspected or cancelled independently.
 type triggerStreamTracker struct {
-	mu      sync.Mutex
-	entries map[string]*triggerStreamEntry
+	mu          sync.Mutex
+	entries     map[string]*triggerStreamEntry
+	coordinator *TriggerExecutionCoordinator
 }
 
-func newTriggerStreamTracker() *triggerStreamTracker {
-	return &triggerStreamTracker{entries: make(map[string]*triggerStreamEntry)}
+func newTriggerStreamTracker(coordinator *TriggerExecutionCoordinator) *triggerStreamTracker {
+	return &triggerStreamTracker{
+		entries:     make(map[string]*triggerStreamEntry),
+		coordinator: coordinator,
+	}
 }
 
 func (t *triggerStreamTracker) register(msg *models.TriggerOperationMsg, port int) {
@@ -33,6 +37,34 @@ func (t *triggerStreamTracker) register(msg *models.TriggerOperationMsg, port in
 		Port:   port,
 		Status: models.TriggerOperationStatusPending,
 	}
+	t.coordinator.OnStart(msg)
+}
+
+func (t *triggerStreamTracker) GetMessage(msgID string) *models.TriggerOperationMsg {
+	if e, ok := t.entries[msgID]; ok {
+		return e.Msg
+	}
+
+	return nil
+}
+
+func (t *triggerStreamTracker) recordLine(triggerID string, output models.ExecutionOutput) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.coordinator.OnLine(triggerID, output)
+}
+
+func (t *triggerStreamTracker) complete(msg *models.TriggerOperationMsg) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.coordinator.OnDone(msg)
+	t.entries[msg.ID].Status = models.TriggerOperationStatusDone
+}
+
+func (t *triggerStreamTracker) remove(msgID string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.entries, msgID)
 }
 
 func (t *triggerStreamTracker) updateStatus(msgID string, status models.TriggerOperationStatus) {
@@ -41,10 +73,4 @@ func (t *triggerStreamTracker) updateStatus(msgID string, status models.TriggerO
 	if e, ok := t.entries[msgID]; ok {
 		e.Status = status
 	}
-}
-
-func (t *triggerStreamTracker) remove(msgID string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	delete(t.entries, msgID)
 }
