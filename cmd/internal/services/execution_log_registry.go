@@ -4,18 +4,24 @@ import (
 	"sync"
 
 	"github.com/gclkaze/evamon/cmd/internal/models"
+	"github.com/magiconair/properties"
 )
 
-const executionRingCapacity = 10
+//const executionRingCapacity = 10
 
 type ExecutionLogRegistry struct {
 	mu   sync.RWMutex
 	logs map[string]map[string]*models.RingBuffer[models.TriggerExecution]
+
+	executionRingCapacity int
 }
 
-func NewExecutionLogRegistry() *ExecutionLogRegistry {
+func NewExecutionLogRegistry(props *properties.Properties) *ExecutionLogRegistry {
+	executionRingCapacity := props.GetInt("execution_ring_capacity", 10)
+
 	return &ExecutionLogRegistry{
-		logs: make(map[string]map[string]*models.RingBuffer[models.TriggerExecution]),
+		logs:                  make(map[string]map[string]*models.RingBuffer[models.TriggerExecution]),
+		executionRingCapacity: executionRingCapacity,
 	}
 }
 
@@ -24,7 +30,7 @@ func (r *ExecutionLogRegistry) getOrCreate(diagramID, ruleID string) *models.Rin
 		r.logs[diagramID] = make(map[string]*models.RingBuffer[models.TriggerExecution])
 	}
 	if _, ok := r.logs[diagramID][ruleID]; !ok {
-		r.logs[diagramID][ruleID] = models.NewRingBuffer[models.TriggerExecution](executionRingCapacity)
+		r.logs[diagramID][ruleID] = models.NewRingBuffer[models.TriggerExecution](r.executionRingCapacity)
 	}
 	return r.logs[diagramID][ruleID]
 }

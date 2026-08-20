@@ -8,6 +8,7 @@ import (
 	window "github.com/gclkaze/evamon/cmd/internal/ui/chart"
 	"github.com/gclkaze/evamon/cmd/internal/ui/port"
 	uport "github.com/gclkaze/evamon/cmd/internal/ui/port"
+	"github.com/magiconair/properties"
 
 	dport "github.com/gclkaze/evamon/cmd/internal/ui/diagrams/port"
 	vp "github.com/gclkaze/evamon/cmd/internal/viewproject"
@@ -45,7 +46,12 @@ type Builder struct {
 	DefaultMaxPoints int
 }
 
-func New( /*layout, */ factory dport.Factory, toolbarFactory dport.DiagramToolbarFactory /*, inst.renderer.ChartRegistry()*/, renderer port.Renderer) *Builder { //(layout uport.Layout, factory dport.Factory, toolbarFactory dport.DiagramToolbarFactory, chartRegistry *port.ChartRegistry) *Builder {
+func New( /*layout, */ factory dport.Factory, toolbarFactory dport.DiagramToolbarFactory /*, inst.renderer.ChartRegistry()*/, renderer port.Renderer, props *properties.Properties) *Builder { //(layout uport.Layout, factory dport.Factory, toolbarFactory dport.DiagramToolbarFactory, chartRegistry *port.ChartRegistry) *Builder {
+
+	/*	defaultWidth := props.GetFloat32("default_window_width", 400)
+		defaultHeight := props.GetFloat32("default_window_height", 400)
+		defaultResizable := props.GetBool("default_window_resizable", false)*/
+	defaultMaxPoints := props.GetInt("default_barchart_maxpoints", 1000)
 
 	return &Builder{
 		Layout:         renderer.Layout(),
@@ -58,7 +64,7 @@ func New( /*layout, */ factory dport.Factory, toolbarFactory dport.DiagramToolba
 		MinChartBooleanWidth:  100,
 		MinChartBooleanHeight: 100,
 
-		DefaultMaxPoints: 1000,
+		DefaultMaxPoints: defaultMaxPoints,
 		chartRegistry:    renderer.ChartRegistry(),
 		renderer:         renderer,
 	}

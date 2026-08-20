@@ -1157,3 +1157,247 @@ func (inst *WidgetService) drainStream(
 - `tryParseResult` uses `map[string]json.RawMessage` for key
   presence check before full unmarshal — never rely on zero values
   to discriminate message types.
+
+
+
+OK, lets continue now on the Fyne Execution log feature. The maximize button and the Detach functionalities do not really do something on click, the same also for the Download button. I am thinking that actually Maximize is a synonym for detach in that case, so what i would like is , first of all to remove 'Detach', when the user will click on 'Maximize' button, then a new Fyne window will appear that will host the Execution Log pane where the original bottom one, will vanish. If the user will close the maximized version of the execution log, then the window will close and then the original one will appear as it was; in the bottom of the dashboard window.  About the 'download' functionality, i would like the user to be able to download the json logs of messages of a given execution, thus the user should have select a Diagram, a Trigger Rule and a particular Execution in order to Download. Otherwise, the button could be disabled, and enabled back when the user has selected a particular Execution. I would like also the name of the Diagram and the Condition Label in the Execution Log, otherwise it is very difficult to know which Rule and Which Diagram's Rule has been Triggered, maybe show the Diagram Name (full name-max 15 Characters) and Trigger Label Max 10 Characters. Additionally, the Filter Dropdown that shows "All","Operation","Label","Program" does not seem to work. So i am suggesting the following;to hide it for now, and by default to be 'All'. This is a task we are going to touch next, after the Execution Log tab and subtab names, maximize feature are done. Write me now the prompt for Claude Code.
+
+  
+# Task: Execution Log Panel — Maximize, Download, Labels, Filter Dropdown Fix
+
+## Overview
+Four focused fixes to the existing ExecutionLogPanel UI. The backend
+is fully implemented. Do not touch any backend files.
+
+---
+
+## 1. Remove Detach — Maximize opens a new window
+
+### Remove
+- Remove the "⧉ Detach" button from the toolbar entirely
+- Remove all code related to detach: the `onDetach` method, any
+  `detachBtn` field, any detach-related wiring
+
+### Maximize behaviour (replaces both Maximize and Detach)
+When the user clicks "⛶ Maximize":
+1. A new Fyne OS window opens containing the full execution log UI
+   (same diagram tabs → rule tabs → execution list → execution detail)
+2. The bottom panel in the main dashboard window is hidden —
+   specifically the bottom half of the VSplit is replaced with an
+   empty `container.NewMax()` placeholder or the VSplit offset is
+   set to `1.0` so the log panel occupies zero height
+3. When the user closes the maximized window:
+   - The new window closes
+   - The bottom panel in the dashboard is restored to its original
+     content and the VSplit offset is restored to `0.7`
+
+### Implementation notes
+- The maximized window must be fully independent — it builds its own
+  tab structure from the same `ExecutionLogRegistry` and dashboard
+  config. It shares the registry (read-only) but does not share
+  widget instances with the main panel.
+- The maximized window toolbar does NOT show the Maximize button —
+  only the filter row and Download button.
+- `ExecutionLogPanel` must track whether the maximized window is open
+  (`isMaximized bool`) to prevent opening multiple windows. If already
+  maximized, clicking Maximize again brings the existing window to front
+  via `w.RequestFocus()`.
+- On main window close (`SetOnClosed`) if the maximized window is open,
+  close it programmatically before the main window exits.
+```go
+func (p *ExecutionLogPanel) onMaximize() {
+    if p.isMaximized {
+        p.maximizedWindow.RequestFocus()
+        return
+    }
+    p.isMaximized = true
+    p.hidePanelInDashboard()
+
+    w := p.app.NewWindow("Execution Logs")
+    p.maximizedWindow = w
+    w.SetContent(p.buildDetachedContent())
+    w.Resize(fyne.NewSize(1000, 650))
+    w.SetOnClosed(func() {
+        p.isMaximized = false
+        p.maximizedWindow = nil
+        p.restorePanelInDashboard()
+    })
+    w.Show()
+}
+
+func (p *ExecutionLogPanel) hidePanelInDashboard() {
+    p.split.Offset = 1.0
+    p.split.Refresh()
+}
+
+func (p *ExecutionLogPanel) restorePanelInDashboard() {
+    p.split.Offset = p.prevOffset
+    p.split.Refresh()
+}
+```
+
+---
+
+## 2. Download button — enable only when an execution is selected
+
+### Current behaviour
+Download button is always enabled (or incorrectly wired).
+
+### Required behaviour
+- Download button starts **disabled**
+- It becomes **enabled** only when the user has navigated to the
+  execution detail view (State 2) — i.e. has selected a specific
+  `TriggerExecution` from the list
+- When the user navigates back to the execution list (State 1),
+  the button becomes **disabled** again
+- When enabled and clicked: `dialog.ShowFileSave` opens, default
+  filename = `execution_<triggerID>.json`, saves the currently
+  selected `TriggerExecution` as indented JSON
+
+### Wiring
+`onActiveExecChanged` callback is already threaded through the tab
+hierarchy. Wire it to enable/disable the download button:
+```go
+onActiveExecChanged: func(exec *models.TriggerExecution) {
+    if exec != nil {
+        p.toolbar.SetDownloadEnabled(true)
+        p.activeExec = exec
+    } else {
+        p.toolbar.SetDownloadEnabled(false)
+        p.activeExec = nil
+    }
+},
+```
+
+`SetDownloadEnabled` on the toolbar:
+```go
+func (t *ExecutionLogToolbar) SetDownloadEnabled(enabled bool) {
+    if enabled {
+        t.downloadBtn.Enable()
+    } else {
+        t.downloadBtn.Disable()
+    }
+}
+```
+
+Download filename format:
+```go
+fmt.Sprintf("execution_%s.json", exec.TriggerID)
+```
+
+---
+
+## 3. Diagram name and condition label in tab titles
+
+### Diagram tab title
+Currently shows `diagramID` (a UUID). Replace with the diagram's
+display name truncated to **15 characters**:
+```go
+func truncate(s string, max int) string {
+    if len([]rune(s)) <= max {
+        return s
+    }
+    return string([]rune(s)[:max]) + "…"
+}
+```
+
+Diagram display name comes from the dashboard config — use the
+`title` or `name` field of the diagram entry (whichever is populated).
+If both are empty fall back to the first 8 characters of the diagramID.
+```go
+tabTitle := truncate(diagram.Title, 15)
+```
+
+### Rule tab title
+Currently shows `rule.Label` with no truncation. Truncate to
+**10 characters**:
+```go
+tabTitle := truncate(rule.Label, 10)
+```
+
+### Tooltip on hover
+Since titles are truncated, add a full tooltip to each tab so the
+user can see the complete name on hover. Use `widget.NewTabItemWithIcon`
+or wrap the tab label in a widget that implements `Tappable` with a
+tooltip — the simplest approach in Fyne is:
+```go
+// Use the full untruncated string as the tab object's tooltip
+// via a custom label widget or by setting a BaseWidget tooltip
+```
+
+If Fyne's `AppTabs` does not natively support per-tab tooltips,
+skip the tooltip and rely on truncation + "…" suffix as the indicator.
+Do NOT implement a workaround that significantly increases complexity.
+
+---
+
+## 4. Hide the operation type filter dropdown
+
+### Current behaviour
+The type dropdown (`All / Operation / Label / Program`) is shown in
+the toolbar Row 2 but does not correctly filter log lines.
+
+### Required change
+- **Hide** the type dropdown entirely from the toolbar
+- The filter type is hardcoded to `OperationTypeAll` internally —
+  all lines pass the type filter by default
+- Do NOT remove the `ApplyFilterType` method or `OperationType`
+  logic from `ExecutionDetailView` or `ExecutionLogParser` — this
+  will be re-enabled in a future task
+- Row 2 of the toolbar becomes simply:
+```go
+row2 := container.NewBorder(nil, nil, nil, nil, filterEntry)
+```
+
+The filter entry fills the full width of row 2 with no dropdown
+beside it.
+
+---
+
+## 5. Toolbar final layout
+
+After the above changes the toolbar has:
+
+**Row 1:**
+```
+[⛶ Maximize]                          [⬇ Download JSON]
+```
+```go
+row1 := container.NewHBox(
+    maximizeBtn,
+    layout.NewSpacer(),
+    downloadBtn,
+)
+```
+
+**Row 2:**
+```
+[Filter lines...________________________________]
+```
+```go
+row2 := container.NewBorder(nil, nil, nil, nil, filterEntry)
+```
+
+**Assembly:**
+```go
+container.NewVBox(row1, row2)
+```
+
+---
+
+## 6. Coding standards
+
+- No method longer than 20 lines.
+- All structs use private fields with public constructor functions.
+- Never render `entry.Line` or `entry.Stream` — always `entry.ParsedMsg`.
+- `truncate()` is a package-level helper in `ui/execution_log/` —
+  not duplicated across files.
+- `isMaximized bool` and `maximizedWindow fyne.Window` are private
+  fields on `ExecutionLogPanel`.
+- The maximized window shares `ExecutionLogRegistry` (read-only) —
+  never shares widget instances.
+- Download button is always initialised as disabled —
+  `downloadBtn.Disable()` in constructor.
+- `filepath.Base()` everywhere a file path is displayed.
+- Do not touch any backend files — models, services, coordinator,
+  tracker, registry are all unchanged.

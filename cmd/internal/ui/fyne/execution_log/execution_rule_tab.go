@@ -10,21 +10,19 @@ import (
 // ExecutionRuleTab manages list ↔ detail navigation for one rule's executions.
 // Clicking an execution row enters the detail view; the back button returns to the list.
 type ExecutionRuleTab struct {
-	stack      *fyne.Container
-	listView   *ExecutionListView
-	detailView *ExecutionDetailView
+	stack               *fyne.Container
+	listView            *ExecutionListView
+	detailView          *ExecutionDetailView
+	onActiveExecChanged func(*models.TriggerExecution)
 }
 
-func NewExecutionRuleTab(renderer *LogLineRenderer) *ExecutionRuleTab {
-	rt := &ExecutionRuleTab{}
-
+func NewExecutionRuleTab(renderer *LogLineRenderer, onActiveExecChanged func(*models.TriggerExecution)) *ExecutionRuleTab {
+	rt := &ExecutionRuleTab{onActiveExecChanged: onActiveExecChanged}
 	rt.detailView = NewExecutionDetailView(func() { rt.showList() }, renderer)
-
 	rt.listView = NewExecutionListView(func(exec *models.TriggerExecution) {
 		rt.detailView.SetExecution(exec)
-		rt.showDetail()
+		rt.showDetail(exec)
 	})
-
 	rt.stack = container.NewStack(rt.listView.Object())
 	return rt
 }
@@ -43,12 +41,18 @@ func (rt *ExecutionRuleTab) ApplyFilter(text, typeFilter string) {
 }
 
 func (rt *ExecutionRuleTab) showList() {
+	if rt.onActiveExecChanged != nil {
+		rt.onActiveExecChanged(nil)
+	}
 	rt.stack.RemoveAll()
 	rt.stack.Add(rt.listView.Object())
 	rt.stack.Refresh()
 }
 
-func (rt *ExecutionRuleTab) showDetail() {
+func (rt *ExecutionRuleTab) showDetail(exec *models.TriggerExecution) {
+	if rt.onActiveExecChanged != nil {
+		rt.onActiveExecChanged(exec)
+	}
 	rt.stack.RemoveAll()
 	rt.stack.Add(rt.detailView.Object())
 	rt.stack.Refresh()

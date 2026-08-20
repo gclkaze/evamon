@@ -67,10 +67,7 @@ func NewRootCmd() *cobra.Command {
 
 	//r.Run()
 
-	executionRegistry := services.NewExecutionLogRegistry()
-	coordinator := services.NewTriggerExecutionCoordinator(executionRegistry)
-
-	widgetService := services.NewWidgetService(r, df, coordinator)
+	widgetService := services.NewWidgetService(r, df)
 
 	viewService := services.NewViewService(widgetService)
 
@@ -80,6 +77,10 @@ func NewRootCmd() *cobra.Command {
 		app.GetPrinter().Error(err)
 		return nil
 	}
+
+	executionRegistry := services.NewExecutionLogRegistry(app.GetProperties())
+	coordinator := services.NewTriggerExecutionCoordinator(executionRegistry)
+	widgetService.SetCoordinator(coordinator)
 
 	styleConfig, _ := executionlog.LoadLogStyleConfig(path.Join(app.GetConfigPath(), "log_styles.json"))
 	logRenderer := executionlog.NewLogLineRenderer(styleConfig)

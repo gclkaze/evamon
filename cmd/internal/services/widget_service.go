@@ -41,10 +41,13 @@ type WidgetService struct {
 	logPanelBuilder func() port.UIObject
 }
 
-func NewWidgetService(r port.Renderer, df porter.Factory, coord *TriggerExecutionCoordinator) *WidgetService {
-	return &WidgetService{renderer: r, drawerFactory: df, variableContainer: ui.NewVariableContainer(), jobRouter: ui.NewJobRouter(), coord: coord}
+func NewWidgetService(r port.Renderer, df porter.Factory) *WidgetService {
+	return &WidgetService{renderer: r, drawerFactory: df, variableContainer: ui.NewVariableContainer(), jobRouter: ui.NewJobRouter()}
 }
 
+func (inst *WidgetService) SetCoordinator(coord *TriggerExecutionCoordinator) {
+	inst.coord = coord
+}
 func (inst *WidgetService) logErr(err error) {
 	if inst.logger != nil {
 		inst.logger.Error(err)

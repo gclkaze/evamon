@@ -3,10 +3,19 @@ package models
 import "time"
 
 type ExecutionLogEntry struct {
-	Stream    string    // "stdout" or "stderr"
-	Line      string    // raw line
-	ParsedMsg string    // extracted from {"msg":"..."} if JSON, else same as Line
+	Stream    string `json:"-"` // excluded from JSON
+	Line      string `json:"-"` // excluded from JSON
+	ParsedMsg string // extracted from {"msg":"..."} if JSON, else same as Line
 	Timestamp time.Time
+}
+
+type SimpleExecutionLogEntry struct {
+	ParsedMsg string // extracted from {"msg":"..."} if JSON, else same as Line
+	Timestamp time.Time
+}
+
+func (s ExecutionLogEntry) ToSimpleExecutionLogEntry() *SimpleExecutionLogEntry {
+	return &SimpleExecutionLogEntry{ParsedMsg: s.ParsedMsg, Timestamp: s.Timestamp}
 }
 
 type TriggerExecution struct {

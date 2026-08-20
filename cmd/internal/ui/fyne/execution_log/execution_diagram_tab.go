@@ -10,18 +10,20 @@ import (
 
 // ExecutionDiagramTab holds per-rule tabs for one diagram.
 type ExecutionDiagramTab struct {
-	tabs       *container.AppTabs
-	ruleTabs   map[string]*ExecutionRuleTab
-	emptyLabel *widget.Label
-	renderer   *LogLineRenderer
-	obj        fyne.CanvasObject
+	tabs                *container.AppTabs
+	ruleTabs            map[string]*ExecutionRuleTab
+	emptyLabel          *widget.Label
+	renderer            *LogLineRenderer
+	onActiveExecChanged func(*models.TriggerExecution)
+	obj                 fyne.CanvasObject
 }
 
-func NewExecutionDiagramTab(renderer *LogLineRenderer) *ExecutionDiagramTab {
+func NewExecutionDiagramTab(renderer *LogLineRenderer, onActiveExecChanged func(*models.TriggerExecution)) *ExecutionDiagramTab {
 	d := &ExecutionDiagramTab{
-		tabs:     container.NewAppTabs(),
-		ruleTabs: make(map[string]*ExecutionRuleTab),
-		renderer: renderer,
+		tabs:                container.NewAppTabs(),
+		ruleTabs:            make(map[string]*ExecutionRuleTab),
+		renderer:            renderer,
+		onActiveExecChanged: onActiveExecChanged,
 	}
 	d.emptyLabel = widget.NewLabelWithStyle(
 		"No trigger rules have fired yet.",
@@ -41,9 +43,9 @@ func (d *ExecutionDiagramTab) Refresh(data map[string][]*models.TriggerExecution
 	changed := false
 	for _, ruleID := range ruleIDs {
 		if _, ok := d.ruleTabs[ruleID]; !ok {
-			rt := NewExecutionRuleTab(d.renderer)
+			rt := NewExecutionRuleTab(d.renderer, d.onActiveExecChanged)
 			d.ruleTabs[ruleID] = rt
-			d.tabs.Append(container.NewTabItem(shortID(ruleID), rt.Object()))
+			d.tabs.Append(container.NewTabItem(truncate(ruleID, 10), rt.Object()))
 			changed = true
 		}
 		d.ruleTabs[ruleID].Refresh(data[ruleID])
